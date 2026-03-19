@@ -40,8 +40,8 @@ public class CacheEntryPredicateAdapter implements CacheEntryPredicate {
 
     /** */
     @GridToStringInclude
-    @Order(value = 1, method = "value")
-    @Nullable private CacheObject val;
+    @Order(1)
+    @Nullable CacheObject val;
 
     /** */
     public CacheEntryPredicateAdapter() {

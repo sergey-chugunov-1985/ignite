@@ -152,6 +152,7 @@ import org.junit.runners.Suite;
     DefaultEnumMapperTest.class,
     IndexKeyTypeMessageTest.class,
     IgniteDataTransferObjectProcessorTest.class,
+    CompressedMessageTest.class
 })
 public class IgniteBasicTestSuite {
 }

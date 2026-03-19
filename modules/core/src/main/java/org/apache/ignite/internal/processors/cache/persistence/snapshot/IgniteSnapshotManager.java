@@ -1070,7 +1070,7 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
                 );
 
                 SnapshotHandlerContext ctx = new SnapshotHandlerContext(meta, req.groups(), cctx.localNode(), snpOp.snapshotFileTree(),
-                    snpOp.streamerWarning(), true);
+                    snpOp.streamerWarning(), true, null, null);
 
                 snpOp.meta(meta);
 
@@ -2388,7 +2388,7 @@ public class IgniteSnapshotManager extends GridCacheSharedManagerAdapter
         FilePageStore pageStore
     ) throws IgniteCheckedException {
         CacheObjectContext coctx = new CacheObjectContext(ctx, grpName, null, false,
-            false, false, false, false);
+            false, false, false);
 
         GridCacheSharedContext<?, ?> sctx = GridCacheSharedContext.builder().build(ctx, null);
 
