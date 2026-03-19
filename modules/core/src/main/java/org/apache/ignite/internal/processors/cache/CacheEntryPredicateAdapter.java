@@ -36,7 +36,7 @@ public class CacheEntryPredicateAdapter implements CacheEntryPredicate {
     /** */
     @GridToStringInclude
     @Order(0)
-    private CacheEntryPredicateType type;
+    CacheEntryPredicateType type;
 
     /** */
     @GridToStringInclude
