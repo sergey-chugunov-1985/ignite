@@ -23,10 +23,12 @@ import org.apache.ignite.binary.BinaryObject;
 import org.apache.ignite.internal.Order;
 import org.apache.ignite.internal.util.tostring.GridToStringInclude;
 import org.apache.ignite.internal.util.typedef.internal.CU;
+import org.apache.ignite.marshaller.Marshaller;
+import org.apache.ignite.plugin.extensions.communication.MarshallableMessage;
 import org.jetbrains.annotations.Nullable;
 
 /** A unified container for common, typical cache entry predicates. */
-public class CacheEntryPredicateAdapter implements CacheEntryPredicate {
+public class CacheEntryPredicateAdapter implements CacheEntryPredicate, MarshallableMessage {
     /** */
     private static final long serialVersionUID = 4647110502545358709L;
 
