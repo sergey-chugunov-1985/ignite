@@ -15,26 +15,26 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.spi.discovery.zk.internal;
+package org.apache.ignite.testsuites;
 
-import org.apache.ignite.internal.util.typedef.internal.S;
-import org.apache.ignite.spi.discovery.DiscoverySpiCustomMessage;
-import org.jetbrains.annotations.Nullable;
+import java.util.ArrayList;
+import java.util.List;
+import org.apache.ignite.testframework.junits.DynamicSuite;
+import org.junit.runner.RunWith;
 
 /**
- *
+ * Same as {@link IgnitePdsTestSuite2} but is started with direct-oi jar in classpath.
  */
-class ZkNoServersMessage implements DiscoverySpiCustomMessage, ZkInternalMessage {
-    /** */
-    private static final long serialVersionUID = 0L;
+@RunWith(DynamicSuite.class)
+public class IgnitePdsNativeIoTestSuite4 {
+    /**
+     * @return Suite.
+     */
+    public static List<Class<?>> suite() {
+        List<Class<?>> suite = new ArrayList<>();
 
-    /** {@inheritDoc} */
-    @Nullable @Override public DiscoverySpiCustomMessage ackMessage() {
-        return null;
-    }
+        IgnitePdsTestSuite10.addRealPageStoreTests(suite, null);
 
-    /** {@inheritDoc} */
-    @Override public String toString() {
-        return S.toString(ZkNoServersMessage.class, this);
+        return suite;
     }
 }

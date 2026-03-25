@@ -15,26 +15,17 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.spi.discovery.zk.internal;
+package org.apache.ignite.testsuites;
 
-import org.apache.ignite.internal.util.typedef.internal.S;
-import org.apache.ignite.spi.discovery.DiscoverySpiCustomMessage;
-import org.jetbrains.annotations.Nullable;
+import static org.apache.ignite.IgniteSystemProperties.IGNITE_DEFAULT_DATA_STORAGE_PAGE_SIZE;
+import static org.apache.ignite.IgniteSystemProperties.IGNITE_DEFAULT_DISK_PAGE_COMPRESSION;
+import static org.apache.ignite.configuration.DiskPageCompression.ZSTD;
 
-/**
- *
- */
-class ZkNoServersMessage implements DiscoverySpiCustomMessage, ZkInternalMessage {
+/** Abstract class for Ignite PDS compression test suites. */
+public class AbstractIgnitePdsCompressionTestSuite {
     /** */
-    private static final long serialVersionUID = 0L;
-
-    /** {@inheritDoc} */
-    @Nullable @Override public DiscoverySpiCustomMessage ackMessage() {
-        return null;
-    }
-
-    /** {@inheritDoc} */
-    @Override public String toString() {
-        return S.toString(ZkNoServersMessage.class, this);
+    static void enableCompressionByDefault() {
+        System.setProperty(IGNITE_DEFAULT_DISK_PAGE_COMPRESSION, ZSTD.name());
+        System.setProperty(IGNITE_DEFAULT_DATA_STORAGE_PAGE_SIZE, String.valueOf(8 * 1024));
     }
 }
