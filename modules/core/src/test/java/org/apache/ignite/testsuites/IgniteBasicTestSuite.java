@@ -41,7 +41,6 @@ import org.apache.ignite.internal.codegen.MessageProcessorTest;
 import org.apache.ignite.internal.managers.communication.CompressedMessageTest;
 import org.apache.ignite.internal.managers.communication.DefaultEnumMapperTest;
 import org.apache.ignite.internal.managers.communication.ErrorMessageSelfTest;
-import org.apache.ignite.internal.managers.communication.IndexKeyTypeMessageTest;
 import org.apache.ignite.internal.processors.affinity.GridAffinityAssignmentV2Test;
 import org.apache.ignite.internal.processors.affinity.GridAffinityAssignmentV2TestNoOptimizations;
 import org.apache.ignite.internal.processors.affinity.GridAffinityProcessorRendezvousSelfTest;
@@ -151,7 +150,6 @@ import org.junit.runners.Suite;
     MessageProcessorTest.class,
     ErrorMessageSelfTest.class,
     DefaultEnumMapperTest.class,
-    IndexKeyTypeMessageTest.class,
     IgniteDataTransferObjectProcessorTest.class,
     CompressedMessageTest.class
 })

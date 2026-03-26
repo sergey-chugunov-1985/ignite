@@ -15,63 +15,38 @@
  * limitations under the License.
  */
 
-package org.apache.ignite.internal.cache.query.index.sorted;
+package org.apache.ignite.internal.direct;
 
+import java.util.List;
+import java.util.Map;
 import org.apache.ignite.internal.Order;
 import org.apache.ignite.plugin.extensions.communication.Message;
+import org.apache.ignite.plugin.extensions.communication.MessageFactory;
 
-/**
- * Defines a signle index key.
- */
-public class IndexKeyDefinition implements Message {
-    /** Index key type. */
+/** */
+class TestNestedContainersMessage implements Message {
+    /** */
+    public static final short TYPE = Short.MAX_VALUE;
+
+    /** */
     @Order(0)
-    IndexKeyType idxType;
+    Map<Integer, Map<Integer, Long>> nestedMap;
 
-    /** Order. */
+    /** */
     @Order(1)
-    boolean asc;
+    Map<Integer, List<Integer>> nestedCollection;
 
-    /** Precision for variable length key types. */
+    /** */
     @Order(2)
-    int precision;
+    Map<Integer, String[]> nestedArr;
 
-    /** */
-    public IndexKeyDefinition() {
+    /** Default constructor for {@link MessageFactory}. */
+    public TestNestedContainersMessage() {
         // No-op.
-    }
-
-    /** */
-    public IndexKeyDefinition(int idxTypeCode, long precision, boolean asc) {
-        idxType = IndexKeyType.forCode(idxTypeCode);
-
-        this.asc = asc;
-
-        // Workaround due to wrong type conversion (int -> long).
-        if (precision >= Integer.MAX_VALUE)
-            this.precision = -1;
-        else
-            this.precision = (int)precision;
     }
 
     /** {@inheritDoc} */
     @Override public short directType() {
-        return 113;
+        return TYPE;
     }
-
-    /** */
-    public boolean ascending() {
-        return asc;
-    }
-
-    /** */
-    public IndexKeyType indexKeyType() {
-        return idxType;
-    }
-
-    /** */
-    public int precision() {
-        return precision;
-    }
-
 }
