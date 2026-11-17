@@ -315,6 +315,12 @@ If the file name isn't specified the output file name is: '<typeId>.bin':
       IMMEDIATE        - Stop immediately as soon as all components are ready.
       GRACEFUL         - Node will stop if and only if it does not store any unique partitions, that don't have another copies in the cluster.
 
+  Print groups of server nodes that can be stopped simultaneously without data loss:
+    control.(sh|bat) --safe-to-stop-sets [--strategy backups-count]
+
+    Parameters:
+      --strategy backups-count  - Name of the strategy that computes safe-to-stop sets. 'backups-count' is used by default.
+
   Stop warm-up:
     control.(sh|bat) --warm-up --stop
 

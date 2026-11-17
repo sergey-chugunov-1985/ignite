@@ -83,6 +83,8 @@ import org.apache.ignite.internal.management.meta.MetaUpdateCommand;
 import org.apache.ignite.internal.management.metric.MetricCommand;
 import org.apache.ignite.internal.management.performancestatistics.PerformanceStatisticsCommand;
 import org.apache.ignite.internal.management.property.PropertyCommand;
+import org.apache.ignite.internal.management.safestopsets.SafeToStopSetsCommand;
+import org.apache.ignite.internal.management.safestopsets.SafeToStopSetsCommandArg;
 import org.apache.ignite.internal.management.snapshot.SnapshotCommand;
 import org.apache.ignite.internal.management.snapshot.SnapshotDeleteCommand;
 import org.apache.ignite.internal.management.snapshot.SnapshotRestoreCommand;
@@ -119,6 +121,7 @@ import static org.apache.ignite.internal.commandline.ArgumentParser.CMD_VERBOSE;
 import static org.apache.ignite.internal.commandline.CommandHandler.DFLT_HOST;
 import static org.apache.ignite.internal.commandline.CommandHandler.DFLT_PORT;
 import static org.apache.ignite.internal.commandline.CommandHandler.EXIT_CODE_OK;
+import static org.apache.ignite.internal.management.api.CommandUtils.cmdKey;
 import static org.apache.ignite.internal.management.api.CommandUtils.cmdText;
 import static org.apache.ignite.internal.management.api.CommandUtils.executable;
 import static org.apache.ignite.internal.management.api.CommandUtils.visitCommandParams;
@@ -180,6 +183,9 @@ public class CommandHandlerParsingTest {
 
     /** */
     public static final String SHUTDOWN_POLICY = "--shutdown-policy";
+
+    /** */
+    public static final String SAFE_TO_STOP_SETS = "--safe-to-stop-sets";
 
     /** */
     @Rule public final TestRule methodRule = new SystemPropertiesRule();
@@ -464,6 +470,34 @@ public class CommandHandlerParsingTest {
 
             assertSame(plc, ((ShutdownPolicyCommandArg)args.commandArg()).shutdownPolicy());
         }
+    }
+
+    /**
+     * Tests the name of the safe-to-stop-sets command: the registry key and the CLI form are a part of the public
+     * contract of the control utility.
+     */
+    @Test
+    public void testSafeToStopSetsCommandName() {
+        assertEquals("SafeToStopSets", cmdKey(SafeToStopSetsCommand.class, null));
+        assertEquals(SAFE_TO_STOP_SETS, cmdText(new SafeToStopSetsCommand()));
+    }
+
+    /**
+     * Tests parsing of the safe-to-stop-sets command arguments.
+     */
+    @Test
+    public void testParseSafeToStopSetsArguments() {
+        ConnectionAndSslParameters args = parseArgs(asList(SAFE_TO_STOP_SETS));
+
+        assertEquals(SafeToStopSetsCommand.class, args.command().getClass());
+        assertNull(((SafeToStopSetsCommandArg)args.commandArg()).strategy());
+
+        args = parseArgs(asList(SAFE_TO_STOP_SETS, "--strategy", "cells"));
+
+        assertEquals(SafeToStopSetsCommand.class, args.command().getClass());
+        assertEquals("cells", ((SafeToStopSetsCommandArg)args.commandArg()).strategy());
+
+        assertParseArgsThrows("Please specify a value for argument: --strategy", SAFE_TO_STOP_SETS, "--strategy");
     }
 
     /**
