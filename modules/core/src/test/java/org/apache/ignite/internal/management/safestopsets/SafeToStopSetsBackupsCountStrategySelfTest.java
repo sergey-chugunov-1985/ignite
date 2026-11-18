@@ -232,20 +232,58 @@ public class SafeToStopSetsBackupsCountStrategySelfTest {
     public void testOwnershipMismatchReadsOwners() throws Exception {
         List<UUID> nodes = ids(6);
 
-        TestSafeToStopSetsContext ctx = ctx(nodes, grp(GRP, 2), aff(GRP, 6), Collections.emptyList());
+        // A node was drained, the rebalance is not finished: three partitions are down to the two copies
+        // {A,B}, the rest still have the regular three copies {A,B,C}.
+        List<PartitionOwners> owners = owners(nodes,
+            new int[][] {{0, 1}, {0, 1}, {0, 1}, {0, 1, 2}, {0, 1, 2}, {0, 1, 2}});
+
+        TestSafeToStopSetsContext ctx = ctx(nodes, grp(GRP, 2), aff(GRP, 6), owners);
 
         ctx.ownershipMatchesAffinity(false);
 
-        try {
-            new BackupsCountSafeToStopSetsStrategy().split(ctx);
-
-            fail("The layout engine is not wired yet");
-        }
-        catch (UnsupportedOperationException expected) {
-            // Expected until the hypergraph engine of the next stage is wired into the fallback path.
-        }
+        List<List<UUID>> res = new BackupsCountSafeToStopSetsStrategy().split(ctx);
 
         assertTrue("The state guard must read the partition owners", ctx.ownersRead());
+        assertExactPartition(res, nodes);
+
+        // No group may contain the pair {A,B}: those two nodes hold both remaining copies of three
+        // partitions.
+        for (List<UUID> grp : res)
+            assertFalse("The group " + grp + " holds both copies of the drained partitions",
+                grp.contains(nodes.get(0)) && grp.contains(nodes.get(1)));
+
+        SafeToStopSetsVerification ver = SafeToStopSetsSupport.verify(res, ctx);
+
+        assertTrue(ver.valid());
+        assertEquals(SafeToStopSetsVerification.Mode.EXACT, ver.mode());
+    }
+
+    /**
+     * A state mismatch that comes from the loss policy or the rebalance mode (modeled by the
+     * {@code ownershipMatchesAffinity} seam) funnels into the same engine path: the owners are read and the
+     * answer is verified exact.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testLossPolicyIgnoreReadsOwners() throws Exception {
+        List<UUID> nodes = ids(6);
+
+        TestSafeToStopSetsContext ctx = ctx(nodes, grp(GRP, 2), aff(GRP, 6),
+            owners(nodes, new int[][] {{0, 1, 2}, {3, 4, 5}, {1, 3, 4}, {2, 4, 5}}));
+
+        // lossPolicy = IGNORE or rebalanceMode = NONE makes the snapshot report a mismatch.
+        ctx.ownershipMatchesAffinity(false);
+
+        List<List<UUID>> res = new BackupsCountSafeToStopSetsStrategy().split(ctx);
+
+        assertTrue("A loss-policy mismatch must read the partition owners", ctx.ownersRead());
+        assertExactPartition(res, nodes);
+
+        SafeToStopSetsVerification ver = SafeToStopSetsSupport.verify(res, ctx);
+
+        assertTrue(ver.valid());
+        assertEquals(SafeToStopSetsVerification.Mode.EXACT, ver.mode());
     }
 
     /**
@@ -394,6 +432,26 @@ public class SafeToStopSetsBackupsCountStrategySelfTest {
         }
 
         return flat;
+    }
+
+    /**
+     * @param nodes Node IDs, in snapshot order.
+     * @param sets Owner sets as indices into {@code nodes}; one partition per entry.
+     * @return Partition owners, all for the group {@value #GRP}.
+     */
+    private static List<PartitionOwners> owners(List<UUID> nodes, int[][] sets) {
+        List<PartitionOwners> res = new ArrayList<>(sets.length);
+
+        for (int i = 0; i < sets.length; i++) {
+            List<UUID> os = new ArrayList<>(sets[i].length);
+
+            for (int idx : sets[i])
+                os.add(nodes.get(idx));
+
+            res.add(new PartitionOwners(GRP, i, os));
+        }
+
+        return res;
     }
 
     /**

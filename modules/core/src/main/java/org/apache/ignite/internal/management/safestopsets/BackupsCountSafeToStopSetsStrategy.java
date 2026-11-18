@@ -140,7 +140,10 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
 
     /**
      * The state guard: the actual ownership is not equal to the affinity assignment yet. The layout is read
-     * once and cached in the snapshot, so the engine and the verification reuse the same material.
+     * once and cached in the snapshot, so the engine and the verification reuse the same material. The
+     * answer is built from the actual layout: hypergraph, greedy pass in consistent ID order, local search.
+     * The size bound is still the configuration bound, which is an upper bound on the group size that the
+     * configuration guarantees; the hypergraph constraint enforces the actual layout.
      *
      * @param ctx Snapshot of the cluster state.
      * @return Partition of the snapshot nodes into safe groups built from the actual layout.
@@ -148,10 +151,16 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
     private static List<List<UUID>> splitByOwners(SafeToStopSetsContext ctx) {
         ctx.partitionOwners();
 
-        // TODO: IGNITE-29282. The hypergraph and the greedy engine of the actual layout are wired here
-        //       by the common engine of the next stage; reading the layout above is already in place.
-        throw new UnsupportedOperationException(
-            "The partition owners were read, but the layout engine is not wired yet [strategy=" + NAME + ']');
+        SafeToStopSetsHypergraph hg = SafeToStopSetsSupport.hypergraph(ctx);
+
+        int maxGroupSize = maxGroupSize(ctx);
+
+        if (maxGroupSize < 1)
+            return SafeToStopSetsSupport.singletons(ctx.nodes());
+
+        List<List<UUID>> result = SafeToStopSetsSupport.greedy(hg, ctx.nodes(), maxGroupSize);
+
+        return SafeToStopSetsSupport.repair(result, hg, ctx.nodes(), maxGroupSize);
     }
 
     /**
