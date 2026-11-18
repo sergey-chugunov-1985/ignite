@@ -31,6 +31,8 @@ import java.util.UUID;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.cache.PartitionLossPolicy;
+import org.apache.ignite.cache.affinity.AffinityFunction;
+import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.cluster.BaselineNode;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.CacheConfiguration;
@@ -89,6 +91,12 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     /** Ready affinity assignment of every cache group. */
     private final Map<Integer, AffinityAssignment> affByGrpId;
 
+    /** Size of the affinity node set of every cache group, by group name. */
+    private final Map<String, Integer> affinityNodes;
+
+    /** Reasons why the configuration-only proof is not legal, by group name. */
+    private final Map<String, String> structureOnlyBlockers;
+
     /** Nodes that are already being stopped gracefully and are therefore excluded from {@link #nodes}. */
     private final List<UUID> gracefulShutdownNodes;
 
@@ -126,6 +134,8 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
         this.cacheGroups = snap.cacheGroups;
         this.grpCtxs = snap.grpCtxs;
         this.affByGrpId = snap.affByGrpId;
+        this.affinityNodes = snap.affinityNodes;
+        this.structureOnlyBlockers = snap.structureOnlyBlockers;
         this.gracefulShutdownNodes = snap.gracefulShutdownNodes;
         this.ownersAvailable = snap.ownersAvailable;
         this.reasons = new ArrayList<>(snap.reasons);
@@ -150,6 +160,21 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     /** {@inheritDoc} */
     @Override public Map<String, CacheGroupInfo> cacheGroups() {
         return cacheGroups;
+    }
+
+    /** {@inheritDoc} */
+    @Override public int affinityNodesCount(String groupName) {
+        Integer size = affinityNodes.get(groupName);
+
+        if (size == null)
+            throw new IllegalArgumentException("Unknown cache group: " + groupName);
+
+        return size;
+    }
+
+    /** {@inheritDoc} */
+    @Override public Map<String, String> structureOnlyBlockers() {
+        return structureOnlyBlockers;
     }
 
     /** {@inheritDoc} */
@@ -456,6 +481,8 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
         Map<String, CacheGroupInfo> infos = new LinkedHashMap<>();
         Map<Integer, AffinityAssignment> affs = new HashMap<>();
+        Map<String, Integer> affNodes = new LinkedHashMap<>();
+        Map<String, String> blockers = new LinkedHashMap<>();
 
         boolean available = true;
 
@@ -466,6 +493,13 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
             infos.put(grpName,
                 new CacheGroupInfo(grpName, ccfg.getCacheMode(), ccfg.getBackups(), ccfg.getPartitionLossPolicy()));
+
+            // A pure function of the configuration, so it is evaluated for every group, ready or not:
+            // the configuration path is either legal or not, independent of the topology state.
+            String blocker = structureOnlyBlocker(ccfg.getAffinity());
+
+            if (blocker != null)
+                blockers.put(grpName, blocker);
 
             if (grp.persistenceEnabled() && !baselineSet) {
                 snap.reasons.add("Baseline topology is not set although persistence is enabled " +
@@ -483,7 +517,10 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
             }
 
             try {
-                affs.put(grp.groupId(), grp.affinity().readyAffinity(topVer));
+                AffinityAssignment aff = grp.affinity().readyAffinity(topVer);
+
+                affs.put(grp.groupId(), aff);
+                affNodes.put(grpName, aff.nodes().size());
             }
             catch (IllegalStateException e) {
                 snap.reasons.add("Affinity is not initialized for the topology version [group=" + grpName +
@@ -496,6 +533,8 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
         snap.cacheGroups = Collections.unmodifiableMap(infos);
         snap.grpCtxs = Collections.unmodifiableList(grps);
         snap.affByGrpId = Collections.unmodifiableMap(affs);
+        snap.affinityNodes = Collections.unmodifiableMap(affNodes);
+        snap.structureOnlyBlockers = Collections.unmodifiableMap(blockers);
         snap.ownersAvailable = available;
 
         return snap;
@@ -545,6 +584,32 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
         }
 
         return true;
+    }
+
+    /**
+     * Checks the configuration-level conditions that make the number of copies of every partition equal to
+     * {@code backups + 1}: the affinity must be exactly {@link RendezvousAffinityFunction}, and the copy
+     * filters must not drop copies. A filter together with {@code excludeNeighbors} does not block: the
+     * fill-up pass of the affinity function reaches the full number of copies. The class is compared with
+     * {@code getClass()} rather than {@code instanceof}: a subclass may override the partition
+     * assignment, and the guarantee of the affinity function no longer applies.
+     *
+     * @param aff Affinity function of the group, {@code null} for the default one.
+     * @return The blocking reason, or {@code null} if the configuration path is legal.
+     */
+    private static String structureOnlyBlocker(AffinityFunction aff) {
+        if (aff == null)
+            return null;
+
+        if (aff.getClass() != RendezvousAffinityFunction.class)
+            return "affinity is " + aff.getClass().getName() + ", not RendezvousAffinityFunction";
+
+        RendezvousAffinityFunction r = (RendezvousAffinityFunction) aff;
+
+        if (!r.isExcludeNeighbors() && (r.getAffinityBackupFilter() != null || r.getBackupFilter() != null))
+            return "copy filters are set without excludeNeighbors";
+
+        return null;
     }
 
     /**
@@ -608,6 +673,12 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
         /** Ready affinity assignment per cache group. */
         private Map<Integer, AffinityAssignment> affByGrpId = Collections.emptyMap();
+
+        /** Size of the affinity node set per cache group, by group name. */
+        private Map<String, Integer> affinityNodes = Collections.emptyMap();
+
+        /** Reasons why the configuration-only proof is not legal, by group name. */
+        private Map<String, String> structureOnlyBlockers = Collections.emptyMap();
 
         /** Nodes that are already being stopped gracefully. */
         private List<UUID> gracefulShutdownNodes = Collections.emptyList();

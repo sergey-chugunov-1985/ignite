@@ -20,6 +20,7 @@ package org.apache.ignite.internal.management.safestopsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -142,6 +143,12 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
 
         assertFalse(ctx.ownersRead());
 
+        AffinityAssignment expectedAff = affinity(CU.cacheId(CACHE_NAME), ctx.affinityTopologyVersion());
+
+        assertEquals(expectedAff.nodes().size(), ctx.affinityNodesCount(CACHE_NAME));
+
+        assertFalse("Reading the affinity node count must not raise the owners flag", ctx.ownersRead());
+
         List<PartitionOwners> owners = ctx.partitionOwners();
 
         assertTrue(ctx.ownersRead());
@@ -202,6 +209,105 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
 
         for (PartitionOwners partOwners : owners)
             assertEquals(3, partOwners.owners().size());
+    }
+
+    /**
+     * The size of the affinity node set is a configuration-level value: the snapshot answers it for every
+     * group of the snapshot without reading the partition owners, an unknown group is a caller bug, and a
+     * clean rendezvous configuration has no structure-only blockers.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testAffinityNodesCountAndCleanBlockers() throws Exception {
+        startGridsMultiThreaded(3);
+
+        createCache(partitionedCache(CACHE_NAME, 1));
+
+        createCache(new CacheConfiguration<>(REPL_CACHE_NAME)
+            .setCacheMode(CacheMode.REPLICATED)
+            .setPartitionLossPolicy(PartitionLossPolicy.READ_WRITE_SAFE)
+            .setAffinity(new RendezvousAffinityFunction(false, PARTS)));
+
+        awaitPartitionMapExchange();
+
+        SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0));
+
+        assertFalse(ctx.ownersRead());
+
+        assertEquals(3, ctx.affinityNodesCount(CACHE_NAME));
+        assertEquals(3, ctx.affinityNodesCount(REPL_CACHE_NAME));
+
+        assertFalse("Reading the affinity node count must not raise the owners flag", ctx.ownersRead());
+
+        try {
+            ctx.affinityNodesCount("unknown-group");
+
+            fail("An unknown group must be a caller bug");
+        }
+        catch (IllegalArgumentException expected) {
+            // Expected: the snapshot knows the size of every group of the snapshot, and nothing else.
+        }
+
+        assertTrue(ctx.structureOnlyBlockers().toString(), ctx.structureOnlyBlockers().isEmpty());
+    }
+
+    /**
+     * The configuration-level conditions of the structure-only proof are reported by the snapshot: a custom
+     * affinity class blocks, and copy filters without {@code excludeNeighbors} block.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testStructureOnlyBlockers() throws Exception {
+        startGridsMultiThreaded(3);
+
+        createCache(new CacheConfiguration<>(CACHE_NAME)
+            .setCacheMode(CacheMode.PARTITIONED)
+            .setBackups(1)
+            .setPartitionLossPolicy(PartitionLossPolicy.READ_WRITE_SAFE)
+            .setAffinity(new CustomAffinityFunction(false, PARTS)));
+
+        createCache(new CacheConfiguration<>(REPL_CACHE_NAME)
+            .setCacheMode(CacheMode.REPLICATED)
+            .setPartitionLossPolicy(PartitionLossPolicy.READ_WRITE_SAFE)
+            .setAffinity(new RendezvousAffinityFunction(false, PARTS)
+                .setAffinityBackupFilter((node, res) -> true)));
+
+        awaitPartitionMapExchange();
+
+        SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0));
+
+        Map<String, String> blockers = ctx.structureOnlyBlockers();
+
+        assertEquals(blockers.toString(), 2, blockers.size());
+        assertTrue(blockers.get(CACHE_NAME), blockers.get(CACHE_NAME).contains("not RendezvousAffinityFunction"));
+        assertTrue(blockers.get(REPL_CACHE_NAME),
+            blockers.get(REPL_CACHE_NAME).contains("copy filters are set without excludeNeighbors"));
+    }
+
+    /**
+     * A copy filter together with {@code excludeNeighbors} does not block the structure-only proof: the
+     * fill-up pass of the affinity function reaches the full number of copies.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testStructureOnlyBlockersWithExcludeNeighbors() throws Exception {
+        startGridsMultiThreaded(3);
+
+        createCache(new CacheConfiguration<>(CACHE_NAME)
+            .setCacheMode(CacheMode.PARTITIONED)
+            .setBackups(1)
+            .setPartitionLossPolicy(PartitionLossPolicy.READ_WRITE_SAFE)
+            .setAffinity(new RendezvousAffinityFunction(true, PARTS)
+                .setAffinityBackupFilter((node, res) -> true)));
+
+        awaitPartitionMapExchange();
+
+        SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0));
+
+        assertTrue(ctx.structureOnlyBlockers().toString(), ctx.structureOnlyBlockers().isEmpty());
     }
 
     /**
@@ -514,5 +620,16 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
         }
 
         return res;
+    }
+
+    /** A subclass of the default affinity to check the exact class comparison of the structure-only proof. */
+    private static class CustomAffinityFunction extends RendezvousAffinityFunction {
+        /**
+         * @param exclNeighbors Exclude neighbors.
+         * @param parts Partitions.
+         */
+        CustomAffinityFunction(boolean exclNeighbors, int parts) {
+            super(exclNeighbors, parts);
+        }
     }
 }

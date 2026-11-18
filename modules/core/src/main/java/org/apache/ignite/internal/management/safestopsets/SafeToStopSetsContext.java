@@ -31,8 +31,10 @@ import org.apache.ignite.lang.IgniteExperimental;
  * cluster and is not transferred between nodes.
  * <p>
  * The whole set of inputs intentionally lives behind this interface instead of being passed as a list of
- * arguments: the set is expected to grow, and an interface is extended by new {@code default} methods, which
- * keeps already compiled implementations working.
+ * arguments: the interface is the parameter type of the strategy SPI, and the set is expected to grow. The
+ * members are abstract on purpose: the snapshot always knows the answer, so a missing input must fail
+ * compilation instead of turning into a runtime heuristic that silently degrades the typical run to the
+ * expensive path.
  */
 @IgniteExperimental
 public interface SafeToStopSetsContext {
@@ -64,6 +66,40 @@ public interface SafeToStopSetsContext {
     Map<String, CacheGroupInfo> cacheGroups();
 
     /**
+     * Size of the affinity node set of the group, that is {@code |affinityNodes(group)|} — the upper bound of
+     * the number of partition copies of any partition of that group. Cheap: one call per group, no partition
+     * data is read, so it never raises {@link #ownersRead()}.
+     * <p>
+     * This is a <em>configuration-level nominal</em>, not an observation of the layout: it does not shrink
+     * when a baseline node leaves, and it does not prove {@code |H| = backups + 1} — that is
+     * {@link #ownershipMatchesAffinity()}. For a {@code REPLICATED} group the value is the copy count itself,
+     * while {@link CacheGroupInfo#backups()} is {@code Integer.MAX_VALUE}, so {@code backups + 1} must not be
+     * computed for it.
+     * <p>
+     * Abstract on purpose: the snapshot always knows the value, so a missing answer must fail compilation
+     * instead of silently degrading the typical run to the expensive path. A group that is not in
+     * {@link #cacheGroups()} is a caller bug, not a state of the cluster.
+     *
+     * @param groupName Name of a group from {@link #cacheGroups()}.
+     * @return Size of the affinity node set, at least {@code 1}.
+     */
+    int affinityNodesCount(String groupName);
+
+    /**
+     * Per-group reasons why {@code |H| = backups + 1} is not provable from the configuration, that is why the
+     * configuration-level conditions are not met: an affinity class other than
+     * {@code RendezvousAffinityFunction}, or copy filters without {@code excludeNeighbors}. An empty map means
+     * the configuration path is legal. Cost — one call per group, no partition data is read.
+     * <p>
+     * The strategy uses the map to refuse with a readable per-group message instead of guessing, and the
+     * verification uses it independently to reject a {@code structure-only} answer that the configuration does
+     * not support: the check is duplicated by the core, not delegated to the strategy.
+     *
+     * @return Group name to reason mapping; empty if every group allows the configuration path.
+     */
+    Map<String, String> structureOnlyBlockers();
+
+    /**
      * Whether the actual partition owners can be read right now. {@code false} means that the affinity or the
      * DHT topology is not ready (the cluster is not activated, the node is starting, a cache is being started
      * or destroyed), never that the cluster is in-memory. Safety is not provable on a non-ready topology, so
@@ -89,41 +125,30 @@ public interface SafeToStopSetsContext {
 
     /**
      * Whether {@link #partitionOwners()} was materialized in this run. This is the observed state of the
-     * snapshot, not a claim of a strategy: the verification uses it to distinguish an answer proved against the
-     * actual layout from an answer derived from the configuration only. Reading the affinity or the DHT
+     * snapshot, not a claim of a strategy: the verification uses it to distinguish an answer proved against
+     * the actual layout from an answer derived from the configuration only. Reading the affinity or the DHT
      * topology outside of this context does not change the value.
      *
      * @return {@code True} if the owners were read from this snapshot.
      */
-    default boolean ownersRead() {
-        return false;
-    }
+    boolean ownersRead();
 
     /**
      * Whether the actual ownership of every group already equals its affinity assignment at
      * {@link #topologyVersion()}. This is the only state-level precondition that makes the number of copies
      * equal to {@code backups + 1}: rebalance is enabled, the partition loss policy is not
      * {@code IGNORE}, the rebalance is finished, there are no moving partitions and no lost partitions.
-     * <p>
-     * The default is {@code false}: an implementation that does not answer must force strategies to read the
-     * actual owners.
      *
      * @return {@code True} if the configuration-only derivation of the number of copies is sound.
      */
-    default boolean ownershipMatchesAffinity() {
-        return false;
-    }
+    boolean ownershipMatchesAffinity();
 
     /**
      * Whether the cluster is still at {@link #topologyVersion()} and the affinity of every group is ready for
      * it. The verification checks the value before the answer is produced, because a partial answer or an
      * answer "for the previous topology" is not a valid result.
-     * <p>
-     * The default is {@code true}, so that synthetic test contexts need no boilerplate.
      *
      * @return {@code False} if the topology version or the readiness of the groups has changed.
      */
-    default boolean topologyStable() {
-        return true;
-    }
+    boolean topologyStable();
 }
