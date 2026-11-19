@@ -122,24 +122,36 @@ public class SafeToStopSetsTask
             SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(ignite);
 
             if (!ctx.partitionOwnersAvailable())
-                throw new IgniteException("Cannot compute safe-to-stop sets: the cluster is not ready: "
-                    + ctx.notReadyReasons());
+                throw notReady(ctx);
 
             SafeToStopSetsStrategy strategy = SafeToStopSetsStrategies.resolve(arg.strategy());
 
-            List<List<UUID>> groups = strategy.split(ctx);
+            List<List<UUID>> groups;
+
+            try {
+                groups = strategy.split(ctx);
+            }
+            catch (RuntimeException e) {
+                // Reading the owners may reveal a partition that has no owner left (H(p) = ∅). That is the
+                // snapshot being not ready, not a computation error: it is already recorded in the reasons.
+                if (ctx.notReady())
+                    throw notReady(ctx);
+
+                throw e;
+            }
 
             SafeToStopSetsVerification verification = SafeToStopSetsSupport.verify(groups, ctx);
 
             if (verification.failed())
-                throw new IgniteException("Cannot compute safe-to-stop sets: verification failed ["
-                    + verification.mode() + "]: " + verification.violations());
+                throw new IllegalArgumentException("verification failed [" + verification.mode() + "]: "
+                    + String.join("; ", verification.violations()));
 
             String start = ctx.topologyVersion();
             String current = ctx.currentTopologyVersion();
 
             if (!start.equals(current))
-                throw new IgniteException("topology changed during computation: " + start + " -> " + current + ", retry");
+                throw new IllegalArgumentException("unstable: topology changed during computation: "
+                    + start + " -> " + current + ", retry");
 
             List<SafeToStopSetsNodeInfo> nodes = ctx.nodes().stream()
                 .map(SafeToStopSetsTask::nodeInfo)
@@ -156,6 +168,17 @@ public class SafeToStopSetsTask
                 strategy.getClass().getName(),
                 ctx.gracefulShutdownNodes()
             );
+        }
+
+        /**
+         * Operator rejection for a snapshot that cannot be used: the message carries the snapshot's reasons,
+         * with the coordinates of the affected groups and the lost partitions.
+         *
+         * @param ctx Not-ready snapshot.
+         * @return The operator rejection, exit code 1.
+         */
+        private static IllegalArgumentException notReady(SafeToStopSetsContextImpl ctx) {
+            return new IllegalArgumentException("not-ready: " + String.join("; ", ctx.notReadyReasons()));
         }
 
         /** {@inheritDoc} */
