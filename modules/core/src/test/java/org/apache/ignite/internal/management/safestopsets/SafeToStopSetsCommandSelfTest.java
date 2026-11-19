@@ -19,18 +19,25 @@ package org.apache.ignite.internal.management.safestopsets;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import org.apache.ignite.cluster.ClusterNode;
+import org.apache.ignite.testframework.GridTestNode;
 import org.junit.Test;
 
+import static java.util.Arrays.asList;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests the operator-facing output of {@link SafeToStopSetsCommand}: the diagnostics header (topology
  * version, strategy identity, verification mode with its reasons), the group listing with singletons
- * separated, the all-singletons message and the graceful-shutdown block.
+ * separated, the all-singletons message and the graceful-shutdown block; and the executor selection:
+ * the job is mapped to the coordinator, the server node with the lowest order.
  */
 public class SafeToStopSetsCommandSelfTest {
     /** Command under test. */
@@ -135,6 +142,66 @@ public class SafeToStopSetsCommandSelfTest {
 
         assertTrue(out.toString(), out.contains("Nodes being stopped gracefully (excluded from the computation):"));
         assertTrue(out.toString(), out.contains("  " + killSet));
+    }
+
+    /**
+     * The job is mapped to a single node: the server node with the lowest order. A client node with a
+     * lower order is not eligible, so the answer does not depend on the connection point.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testNodesSelectsCoordinator() {
+        GridTestNode server0 = server(1L);
+        GridTestNode server1 = server(2L);
+        GridTestNode client = new GridTestNode(UUID.randomUUID()) {
+            /** {@inheritDoc} */
+            @Override public boolean isClient() {
+                return true;
+            }
+        };
+        client.order(0L);
+
+        Collection<ClusterNode> nodes = cmd.nodes(asList(server0, server1, client), new SafeToStopSetsCommandArg());
+
+        assertEquals(1, nodes.size());
+        assertTrue("The coordinator is the server node with the lowest order", nodes.contains(server0));
+    }
+
+    /**
+     * A topology without server nodes is an operator rejection, not a fallback to the default node.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testNodesWithoutServersFails() {
+        GridTestNode client = new GridTestNode(UUID.randomUUID()) {
+            /** {@inheritDoc} */
+            @Override public boolean isClient() {
+                return true;
+            }
+        };
+
+        try {
+            cmd.nodes(Collections.singletonList(client), new SafeToStopSetsCommandArg());
+
+            fail("Expected an operator rejection");
+        }
+        catch (IllegalArgumentException expected) {
+            // No-op.
+        }
+    }
+
+    /**
+     * @param order Node order.
+     * @return A server test node with that order.
+     */
+    private static GridTestNode server(long order) {
+        GridTestNode node = new GridTestNode(UUID.randomUUID());
+
+        node.order(order);
+
+        return node;
     }
 
     /**

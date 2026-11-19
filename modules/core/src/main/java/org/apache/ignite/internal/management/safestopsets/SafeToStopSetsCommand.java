@@ -34,6 +34,10 @@ import org.apache.ignite.internal.management.api.ComputeCommand;
  * Command that prints groups of server nodes which can be stopped simultaneously without losing data.
  * <p>
  * The command is read-only and advisory: cluster, baseline and cache state are never changed.
+ * <p>
+ * The computation is mapped to a single node — the coordinator, the server node with the lowest
+ * {@link ClusterNode#order()}: it is the first to observe topology changes (it drives the exchange),
+ * so a single repeated topology version check on that node is sufficient for the answer to be valid.
  */
 public class SafeToStopSetsCommand implements ComputeCommand<SafeToStopSetsCommandArg, SafeToStopSetsTaskResult> {
     /** {@inheritDoc} */
@@ -53,7 +57,12 @@ public class SafeToStopSetsCommand implements ComputeCommand<SafeToStopSetsComma
 
     /** {@inheritDoc} */
     @Override public Collection<ClusterNode> nodes(Collection<ClusterNode> nodes, SafeToStopSetsCommandArg arg) {
-        return CommandUtils.servers(nodes);
+        Collection<ClusterNode> coordinator = CommandUtils.coordinatorOrNull(nodes);
+
+        if (coordinator == null)
+            throw new IllegalArgumentException("The command requires at least one server node in the topology");
+
+        return coordinator;
     }
 
     /** {@inheritDoc} */

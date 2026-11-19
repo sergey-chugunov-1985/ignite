@@ -18,7 +18,6 @@
 package org.apache.ignite.internal.management.safestopsets;
 
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -36,13 +35,14 @@ import org.jetbrains.annotations.Nullable;
 import static org.apache.ignite.plugin.security.SecurityPermissionSetBuilder.NO_PERMISSIONS;
 
 /**
- * Task that computes the safe-to-stop sets on the server nodes.
+ * Task that computes the safe-to-stop sets on the coordinator node.
  * <p>
- * The pipeline of a job: a read-only cluster snapshot is taken, the strategy is resolved by name, the groups
- * are computed and the result is always verified against the snapshot by {@link SafeToStopSetsSupport}. A
- * failed verification or a snapshot that is not usable fails the job: no partial answer is ever transferred
- * to the client. The answer is the one produced by the node with the lowest {@link ClusterNode#order()},
- * which makes the result independent of the reduce order.
+ * The job is mapped to a single node — the coordinator, selected by the command: it is the first to observe
+ * topology changes, so a repeated topology version check on that node is sufficient for the answer to be
+ * valid. The pipeline of a job: a read-only cluster snapshot is taken, the strategy is resolved by name,
+ * the groups are computed and the result is always verified against the snapshot by
+ * {@link SafeToStopSetsSupport}. A failed verification or a snapshot that is not usable fails the job:
+ * no partial answer is ever transferred to the client.
  */
 @GridInternal
 public class SafeToStopSetsTask
@@ -60,20 +60,15 @@ public class SafeToStopSetsTask
         if (results.isEmpty())
             throw new IgniteException("Empty job results");
 
-        ComputeJobResult oldest = null;
+        ComputeJobResult res = results.get(0);
 
-        for (ComputeJobResult res : results) {
-            if (res.getException() != null)
-                throw res.getException();
+        if (res.getException() != null)
+            throw res.getException();
 
-            if (oldest == null || res.getNode().order() < oldest.getNode().order())
-                oldest = res;
-        }
-
-        SafeToStopSetsTaskResult data = oldest.getData();
+        SafeToStopSetsTaskResult data = res.getData();
 
         if (data == null)
-            throw new IgniteException("Empty result from node [nodeId=" + oldest.getNode().id() + ']');
+            throw new IgniteException("Empty result from node [nodeId=" + res.getNode().id() + ']');
 
         return data;
     }
