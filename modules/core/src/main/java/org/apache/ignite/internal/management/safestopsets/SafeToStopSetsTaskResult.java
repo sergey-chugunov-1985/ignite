@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.management.safestopsets;
 
 import java.util.List;
+import java.util.UUID;
 import org.apache.ignite.internal.Order;
 import org.apache.ignite.internal.dto.IgniteDataTransferObject;
 import org.apache.ignite.internal.util.typedef.internal.S;
@@ -25,8 +26,11 @@ import org.apache.ignite.internal.util.typedef.internal.S;
 /**
  * Result of {@link SafeToStopSetsTask}.
  * <p>
- * Describes the cluster snapshot the answer was computed for: the list of server nodes and the topology version they
- * were read at.
+ * The result is only formed when the verification succeeded ({@code EXACT} or {@code STRUCTURE_ONLY});
+ * failed verifications surface as a task error instead of a partial result. It describes the cluster
+ * snapshot the answer was computed for (the server nodes and the topology version they were read at),
+ * the groups themselves, what the verification actually checked and the strategy that produced the
+ * groups.
  */
 public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
     /** */
@@ -40,6 +44,41 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
     @Order(1)
     long topVer;
 
+    /** Groups of server node ids: an exact partition of {@link #nodes}, every node in exactly one group. */
+    @Order(2)
+    List<List<UUID>> groups;
+
+    /**
+     * What the verification checked: {@link SafeToStopSetsVerification.Mode#EXACT} or
+     * {@link SafeToStopSetsVerification.Mode#STRUCTURE_ONLY} ({@link SafeToStopSetsVerification.Mode}
+     * name).
+     */
+    @Order(3)
+    String mode;
+
+    /**
+     * Reasons why the result is {@code structure-only} instead of {@code exact}; empty when the mode is
+     * {@code exact}.
+     */
+    @Order(4)
+    List<String> notVerified;
+
+    /** Name of the strategy that produced the groups. */
+    @Order(5)
+    String strategyName;
+
+    /** Version of the strategy implementation, {@code n/a} if it does not report one. */
+    @Order(6)
+    String strategyVersion;
+
+    /** Fully qualified class name of the strategy implementation. */
+    @Order(7)
+    String strategyClass;
+
+    /** Nodes planned to stop gracefully (the kill set); excluded from {@link #nodes} and the groups. */
+    @Order(8)
+    List<UUID> gracefulShutdownNodes;
+
     /**
      * For externalization only.
      */
@@ -47,12 +86,45 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
     }
 
     /**
-     * @param nodes Server nodes of the snapshot.
+     * @param nodes Server nodes of the snapshot, ordered by consistent id.
      * @param topVer Topology version the snapshot was taken at.
      */
     public SafeToStopSetsTaskResult(List<SafeToStopSetsNodeInfo> nodes, long topVer) {
         this.nodes = nodes;
         this.topVer = topVer;
+    }
+
+    /**
+     * @param nodes Server nodes of the snapshot, ordered by consistent id.
+     * @param topVer Topology version the snapshot was taken at.
+     * @param groups Groups of server node ids.
+     * @param mode What the verification checked.
+     * @param notVerified Reasons why the result is structure-only; empty for {@code exact}.
+     * @param strategyName Name of the strategy that produced the groups.
+     * @param strategyVersion Version of the strategy implementation.
+     * @param strategyClass Fully qualified class name of the strategy implementation.
+     * @param gracefulShutdownNodes Nodes planned to stop gracefully.
+     */
+    public SafeToStopSetsTaskResult(
+        List<SafeToStopSetsNodeInfo> nodes,
+        long topVer,
+        List<List<UUID>> groups,
+        String mode,
+        List<String> notVerified,
+        String strategyName,
+        String strategyVersion,
+        String strategyClass,
+        List<UUID> gracefulShutdownNodes
+    ) {
+        this.nodes = nodes;
+        this.topVer = topVer;
+        this.groups = groups;
+        this.mode = mode;
+        this.notVerified = notVerified;
+        this.strategyName = strategyName;
+        this.strategyVersion = strategyVersion;
+        this.strategyClass = strategyClass;
+        this.gracefulShutdownNodes = gracefulShutdownNodes;
     }
 
     /** @return Server nodes of the snapshot, ordered by consistent id. */
@@ -63,6 +135,41 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
     /** @return Topology version the snapshot was taken at. */
     public long topVer() {
         return topVer;
+    }
+
+    /** @return Groups of server node ids. */
+    public List<List<UUID>> groups() {
+        return groups;
+    }
+
+    /** @return What the verification checked. */
+    public String mode() {
+        return mode;
+    }
+
+    /** @return Reasons why the result is structure-only; empty for {@code exact}. */
+    public List<String> notVerified() {
+        return notVerified;
+    }
+
+    /** @return Name of the strategy that produced the groups. */
+    public String strategyName() {
+        return strategyName;
+    }
+
+    /** @return Version of the strategy implementation. */
+    public String strategyVersion() {
+        return strategyVersion;
+    }
+
+    /** @return Fully qualified class name of the strategy implementation. */
+    public String strategyClass() {
+        return strategyClass;
+    }
+
+    /** @return Nodes planned to stop gracefully. */
+    public List<UUID> gracefulShutdownNodes() {
+        return gracefulShutdownNodes;
     }
 
     /** {@inheritDoc} */
