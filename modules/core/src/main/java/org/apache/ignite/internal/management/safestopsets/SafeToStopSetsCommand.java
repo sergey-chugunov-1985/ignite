@@ -17,18 +17,18 @@
 
 package org.apache.ignite.internal.management.safestopsets;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.ignite.cluster.ClusterNode;
-import org.apache.ignite.internal.management.SystemViewCommand;
-import org.apache.ignite.internal.management.SystemViewTask;
 import org.apache.ignite.internal.management.api.CommandUtils;
 import org.apache.ignite.internal.management.api.ComputeCommand;
-
-import static java.util.Arrays.asList;
-import static java.util.Collections.nCopies;
 
 /**
  * Command that prints groups of server nodes which can be stopped simultaneously without losing data.
@@ -58,20 +58,62 @@ public class SafeToStopSetsCommand implements ComputeCommand<SafeToStopSetsComma
 
     /** {@inheritDoc} */
     @Override public void printResult(SafeToStopSetsCommandArg arg, SafeToStopSetsTaskResult res, Consumer<String> printer) {
-        List<String> titles = asList("Node ID", "Consistent ID", "Host");
-
-        List<SystemViewTask.SimpleType> types = nCopies(titles.size(), SystemViewTask.SimpleType.STRING);
-
-        List<List<?>> rows = res.nodes().stream()
-            .map(node -> asList(
-                String.valueOf(node.id()),
-                String.valueOf(node.consistentId()),
-                String.valueOf(node.host())
-            ))
-            .collect(Collectors.toList());
-
         printer.accept("Topology version: " + res.topVer());
+        printer.accept("Strategy: " + res.strategyName()
+            + " [version=" + res.strategyVersion() + ", class=" + res.strategyClass() + "]");
 
-        SystemViewCommand.printTable(titles, types, rows, printer);
+        if (SafeToStopSetsVerification.Mode.EXACT.name().equals(res.mode()))
+            printer.accept("Verified: exact");
+        else {
+            printer.accept("Verified: structure-only");
+
+            for (String reason : res.notVerified())
+                printer.accept("  Reason: " + reason);
+        }
+
+        Map<UUID, String> consistentId = new HashMap<>();
+
+        for (SafeToStopSetsNodeInfo node : res.nodes())
+            consistentId.put(node.id(), node.consistentId());
+
+        List<List<UUID>> groups = new ArrayList<>(res.groups());
+
+        groups.sort(Comparator.comparing(group -> consistentId.get(group.get(0))));
+
+        List<String> groupLines = new ArrayList<>();
+        List<String> singletons = new ArrayList<>();
+
+        for (List<UUID> group : groups) {
+            if (group.size() == 1) {
+                singletons.add(consistentId.get(group.get(0)));
+            }
+            else {
+                List<String> ids = new ArrayList<>(group.size());
+
+                for (UUID id : group)
+                    ids.add(consistentId.get(id));
+
+                groupLines.add("  [" + (groupLines.size() + 1) + "] " + String.join(", ", ids));
+            }
+        }
+
+        if (groupLines.isEmpty())
+            printer.accept("No group of more than one node is safe: every node can be stopped only on its own.");
+        else {
+            printer.accept("Groups (stop the nodes of one group at a time, then re-run this command):");
+            groupLines.forEach(printer);
+        }
+
+        if (!singletons.isEmpty()) {
+            printer.accept("Singletons (cannot be stopped together with any other node without data loss):");
+            singletons.forEach(id -> printer.accept("  " + id));
+        }
+
+        if (!res.gracefulShutdownNodes().isEmpty()) {
+            printer.accept("Nodes being stopped gracefully (excluded from the computation):");
+
+            for (UUID id : res.gracefulShutdownNodes())
+                printer.accept("  " + id);
+        }
     }
 }
