@@ -174,6 +174,47 @@ public class SafeToStopSetsCommandSelfTest {
     }
 
     /**
+     * An operator rejection (IllegalArgumentException) wrapped in a client exception is unwrapped: the
+     * handler re-throws the inner IAE so the command handler prints the operator message and returns code 1.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testHandleExceptionUnwrapsIae() throws Exception {
+        IllegalArgumentException opReject = new IllegalArgumentException("not-ready: cluster is not active");
+        RuntimeException wrapped = new RuntimeException("Compute task failed", opReject);
+
+        try {
+            cmd.handleException(wrapped, s -> { });
+
+            fail("Expected IllegalArgumentException to be rethrown");
+        }
+        catch (IllegalArgumentException expected) {
+            assertEquals(opReject, expected);
+        }
+    }
+
+    /**
+     * A non-operator exception is rethrown as-is: the command handler prints the generic message and
+     * returns code 4.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testHandleExceptionRethrowsOther() throws Exception {
+        RuntimeException internal = new RuntimeException("NPE in DHT");
+
+        try {
+            cmd.handleException(internal, s -> { });
+
+            fail("Expected the exception to be rethrown");
+        }
+        catch (RuntimeException expected) {
+            assertEquals(internal, expected);
+        }
+    }
+
+    /**
      * @param order Node order.
      * @return A server test node with that order.
      */
