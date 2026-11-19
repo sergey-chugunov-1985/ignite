@@ -36,6 +36,7 @@ import org.apache.ignite.util.IdleVerifyDumpTest;
 import org.apache.ignite.util.IoTestCommandTest;
 import org.apache.ignite.util.MetricCommandTest;
 import org.apache.ignite.util.PerformanceStatisticsCommandTest;
+import org.apache.ignite.util.SafeToStopSetsCommandTest;
 import org.apache.ignite.util.SystemViewCommandTest;
 import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
@@ -65,6 +66,7 @@ import org.junit.runners.Suite;
     IoTestCommandTest.class,
     PerformanceStatisticsCommandTest.class,
     CacheMetricsCommandTest.class,
+    SafeToStopSetsCommandTest.class,
 
     IgniteIndexReaderTest.class,
 
