@@ -23,6 +23,7 @@ import org.apache.ignite.testframework.GridTestUtils;
 import org.junit.Test;
 
 import static org.apache.ignite.cache.CacheMode.PARTITIONED;
+import static org.apache.ignite.internal.commandline.CommandHandler.EXIT_CODE_INVALID_ARGUMENTS;
 import static org.apache.ignite.internal.commandline.CommandHandler.EXIT_CODE_OK;
 
 /**
@@ -66,9 +67,7 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
     public void testSuccessOnMultiNodeCluster() throws Exception {
         startGrids(4);
 
-        createCache(2);
-
-        awaitPartitionMapExchange();
+        createCache(CACHE_NAME, 2);
 
         String out = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS);
 
@@ -90,6 +89,77 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
     }
 
     /**
+     * Two nodes with a cache of {@code backups = 0} (no copies at all) and then a second cache of
+     * {@code backups = 1}: in both cases no group of more than one node can be stopped together, the
+     * command rejects with the operator error (exit code 1) and lists every node.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testNoSafeGroup() throws Exception {
+        startGrids(2);
+
+        createCache(CACHE_NAME, 0);
+
+        checkNoSafeGroup();
+
+        createCache(CACHE_NAME + "-backups-1", 1);
+
+        checkNoSafeGroup();
+    }
+
+    /**
+     * A single-node cluster: the only node cannot be stopped together with any other node, the command
+     * rejects with the operator error (exit code 1) naming the reason.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testSingleNodeCluster() throws Exception {
+        startGrids(1);
+
+        createCache(CACHE_NAME, 1);
+
+        String out = exec(EXIT_CODE_INVALID_ARGUMENTS, SAFE_TO_STOP_SETS);
+
+        GridTestUtils.assertContains(log, out, "Check arguments.");
+        GridTestUtils.assertContains(log, out, "No safe group of more than one node");
+        GridTestUtils.assertContains(log, out, "the cluster has a single server node");
+    }
+
+    /**
+     * An unknown strategy name: the command rejects with the list of available names, exit code 1.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testUnknownStrategy() throws Exception {
+        startGrids(4);
+
+        createCache(CACHE_NAME, 2);
+
+        String out = exec(EXIT_CODE_INVALID_ARGUMENTS, SAFE_TO_STOP_SETS, "--strategy", "bogus");
+
+        GridTestUtils.assertContains(log, out, "Check arguments.");
+        GridTestUtils.assertContains(log, out, "Unknown safe-to-stop-sets strategy [name=bogus]");
+        GridTestUtils.assertContains(log, out, BackupsCountSafeToStopSetsStrategy.NAME);
+    }
+
+    /**
+     * Executes the command and checks the no-safe-group operator rejection: exit code 1 and the message
+     * that lists every node as a singleton.
+     *
+     * @throws Exception If failed.
+     */
+    private void checkNoSafeGroup() throws Exception {
+        String out = exec(EXIT_CODE_INVALID_ARGUMENTS, SAFE_TO_STOP_SETS);
+
+        GridTestUtils.assertContains(log, out, "Check arguments.");
+        GridTestUtils.assertContains(log, out, "No safe group of more than one node");
+        GridTestUtils.assertContains(log, out, "every node can be stopped only on its own");
+    }
+
+    /**
      * Executes the command and checks its exit code.
      *
      * @param expExitCode Expected exit code.
@@ -101,12 +171,13 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
     }
 
     /**
+     * @param name Cache name.
      * @param backups Number of backups for the test cache.
      * @throws Exception If failed.
      */
-    private void createCache(int backups) throws Exception {
+    private void createCache(String name, int backups) throws Exception {
         grid(0).createCache(new CacheConfiguration<>()
-            .setName(CACHE_NAME)
+            .setName(name)
             .setCacheMode(PARTITIONED)
             .setBackups(backups)
             .setAffinity(new org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction(false, PARTS)));
