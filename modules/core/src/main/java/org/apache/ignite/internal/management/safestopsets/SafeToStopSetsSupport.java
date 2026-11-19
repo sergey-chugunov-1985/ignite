@@ -273,9 +273,11 @@ public final class SafeToStopSetsSupport {
     }
 
     /**
-     * The semantic level: no group may hold a whole set of partition owners. The owner sets of the snapshot
-     * are already restricted to the snapshot nodes, so a node outside the snapshot can neither form nor
-     * satisfy a constraint.
+     * The semantic level: no stop candidate may hold a whole set of partition owners. Singletons are not
+     * stop candidates — they are printed as "cannot be stopped together with any other node" — so the
+     * invariant only applies to groups of more than one node; the all-singletons result is rejected by the
+     * task as "no safe group" instead. The owner sets of the snapshot are already restricted to the
+     * snapshot nodes, so a node outside the snapshot can neither form nor satisfy a constraint.
      */
     private static List<String> semanticViolations(List<List<UUID>> groups, SafeToStopSetsContext ctx) {
         List<String> res = new ArrayList<>();
@@ -284,7 +286,7 @@ public final class SafeToStopSetsSupport {
             Set<UUID> set = new HashSet<>(owners.owners());
 
             for (List<UUID> group : groups) {
-                if (group.containsAll(set)) {
+                if (group.size() > 1 && group.containsAll(set)) {
                     res.add("Group " + group + " fully contains the owners of partition ["
                         + owners.cacheGroupName() + '/' + owners.partition() + "]: " + owners.owners());
 

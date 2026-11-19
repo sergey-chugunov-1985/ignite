@@ -356,6 +356,31 @@ public class SafeToStopSetsSupportSelfTest {
     }
 
     /**
+     * A singleton that fully contains the owners of a partition is not a semantic violation: singletons
+     * are not stop candidates, they are printed as "cannot be stopped together with any other node". The
+     * all-singletons result is rejected by the task as "no safe group" instead.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testVerifySingletonOwnerIsNotAViolation() throws Exception {
+        List<UUID> nodes = ids(2);
+
+        // Partition 0 is owned by {A} only: the singleton {A} holds its only copy.
+        TestSafeToStopSetsContext ctx = ctx(nodes, ownersFor(nodes, new int[][] {{0}}));
+
+        ctx.partitionOwners();
+
+        SafeToStopSetsVerification ver = SafeToStopSetsSupport.verify(
+            Arrays.asList(Collections.singletonList(nodes.get(0)),
+                Collections.singletonList(nodes.get(1))), ctx);
+
+        assertTrue(ver.valid());
+        assertEquals(SafeToStopSetsVerification.Mode.EXACT, ver.mode());
+        assertTrue(ver.violations().isEmpty());
+    }
+
+    /**
      * A group that does not fully contain any owner set is safe: the verification is exact and valid.
      *
      * @throws Exception If failed.
