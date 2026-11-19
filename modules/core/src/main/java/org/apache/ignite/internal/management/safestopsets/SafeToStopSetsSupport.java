@@ -170,7 +170,8 @@ public final class SafeToStopSetsSupport {
                 SafeToStopSetsVerification.Mode.UNSTABLE,
                 Collections.singletonList(
                     "The topology changed between the snapshot (" + ctx.topologyVersion()
-                        + ") and the verification, the answer is void, retry after the topology stabilizes"),
+                        + ") and the verification (" + ctx.currentTopologyVersion()
+                        + "), the answer is void, retry after the topology stabilizes"),
                 Collections.emptyList());
 
         List<String> violations = structuralViolations(groups, ctx);

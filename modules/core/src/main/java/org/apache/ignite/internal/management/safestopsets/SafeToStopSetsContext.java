@@ -44,6 +44,16 @@ public interface SafeToStopSetsContext {
     String topologyVersion();
 
     /**
+     * Current live topology version at the moment of the call, read from the discovery of the executing node.
+     * The job compares it with {@link #topologyVersion()} right before producing the answer: a mismatch means
+     * the topology changed during the computation and the answer is void. The executing node is the
+     * coordinator, the first to observe topology changes, so this check is sufficient.
+     *
+     * @return Current topology version, {@code null} if it cannot be read.
+     */
+    String currentTopologyVersion();
+
+    /**
      * Server nodes to split, in deterministic order. The set is computed on the server from its own discovery
      * cache and is reduced by the graceful shutdown kill set: the nodes that are already being stopped are
      * excluded, because their copies are scheduled to disappear.

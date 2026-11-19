@@ -63,6 +63,9 @@ final class TestSafeToStopSetsContext implements SafeToStopSetsContext {
     /** Whether the topology is still stable. */
     private boolean stable = true;
 
+    /** Current live topology version; a test seam for the job re-check. */
+    private String currentVersion = TOP_VER;
+
     /** Whether {@link #partitionOwners()} was served at least once. */
     private boolean ownersRead;
 
@@ -111,6 +114,13 @@ final class TestSafeToStopSetsContext implements SafeToStopSetsContext {
     }
 
     /**
+     * @param version Current live topology version, a test seam for the job re-check.
+     */
+    void currentTopologyVersion(String version) {
+        this.currentVersion = version;
+    }
+
+    /**
      * @param groupName Group name.
      * @param reason Blocker reason.
      */
@@ -121,6 +131,11 @@ final class TestSafeToStopSetsContext implements SafeToStopSetsContext {
     /** {@inheritDoc} */
     @Override public String topologyVersion() {
         return TOP_VER;
+    }
+
+    /** {@inheritDoc} */
+    @Override public String currentTopologyVersion() {
+        return currentVersion;
     }
 
     /** {@inheritDoc} */

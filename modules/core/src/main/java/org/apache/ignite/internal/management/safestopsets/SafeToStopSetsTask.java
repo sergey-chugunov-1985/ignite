@@ -135,6 +135,12 @@ public class SafeToStopSetsTask
                 throw new IgniteException("Cannot compute safe-to-stop sets: verification failed ["
                     + verification.mode() + "]: " + verification.violations());
 
+            String start = ctx.topologyVersion();
+            String current = ctx.currentTopologyVersion();
+
+            if (!start.equals(current))
+                throw new IgniteException("topology changed during computation: " + start + " -> " + current + ", retry");
+
             List<SafeToStopSetsNodeInfo> nodes = ctx.nodes().stream()
                 .map(SafeToStopSetsTask::nodeInfo)
                 .collect(Collectors.toList());

@@ -74,7 +74,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     private final IgniteEx ignite;
 
     /** Topology version the snapshot was taken at. */
-    private final AffinityTopologyVersion topVer;
+    private final AffinityTopologyVersion startTopVer;
 
     /** Server nodes of the snapshot, ordered by consistent ID. */
     private final List<ClusterNode> nodes;
@@ -128,7 +128,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
      */
     private SafeToStopSetsContextImpl(IgniteEx ignite, Snapshot snap) {
         this.ignite = ignite;
-        this.topVer = snap.topVer;
+        this.startTopVer = snap.startTopVer;
         this.nodes = snap.nodes;
         this.baselineNodes = snap.baselineNodes;
         this.cacheGroups = snap.cacheGroups;
@@ -144,7 +144,14 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
     /** {@inheritDoc} */
     @Override public String topologyVersion() {
-        return topVer.toString();
+        return startTopVer.toString();
+    }
+
+    /** {@inheritDoc} */
+    @Override public String currentTopologyVersion() {
+        AffinityTopologyVersion cur = ignite.context().discovery().topologyVersionEx();
+
+        return cur == null ? null : cur.toString();
     }
 
     /** {@inheritDoc} */
@@ -223,7 +230,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
                 GridDhtPartitionTopology top = grp.topology();
 
-                if (!top.rebalanceFinished(topVer) || top.hasMovingPartitions() || !top.lostPartitions().isEmpty())
+                if (!top.rebalanceFinished(startTopVer) || top.hasMovingPartitions() || !top.lostPartitions().isEmpty())
                     return false;
             }
             catch (IllegalStateException e) {
@@ -237,16 +244,16 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     /** {@inheritDoc} */
     @Override public boolean topologyStable() {
         try {
-            if (!topVer.equals(ignite.context().discovery().topologyVersionEx()))
+            if (!startTopVer.equals(ignite.context().discovery().topologyVersionEx()))
                 return false;
 
             for (CacheGroupContext grp : grpCtxs) {
                 GridDhtPartitionTopology top = grp.topology();
 
-                if (!top.initialized() || top.readyTopologyVersion().compareTo(topVer) < 0)
+                if (!top.initialized() || top.readyTopologyVersion().compareTo(startTopVer) < 0)
                     return false;
 
-                if (grp.affinity().lastVersion().compareTo(topVer) < 0)
+                if (grp.affinity().lastVersion().compareTo(startTopVer) < 0)
                     return false;
             }
 
@@ -261,7 +268,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
      * @return Topology version the snapshot was taken at.
      */
     public AffinityTopologyVersion affinityTopologyVersion() {
-        return topVer;
+        return startTopVer;
     }
 
     /**
@@ -334,7 +341,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
                 LinkedHashSet<UUID> partOwners = new LinkedHashSet<>(responsible.size());
 
                 for (ClusterNode node : responsible) {
-                    if (node.order() > topVer.topologyVersion() || !srvIds.contains(node.id()))
+                    if (node.order() > startTopVer.topologyVersion() || !srvIds.contains(node.id()))
                         continue;
 
                     partOwners.add(node.id());
@@ -381,7 +388,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     private static Snapshot collect(IgniteEx ignite) {
         Snapshot snap = new Snapshot();
 
-        AffinityTopologyVersion topVer = null;
+        AffinityTopologyVersion startTopVer = null;
         DiscoCache disco = null;
 
         // The topology version and the discovery cache of that version are read as one pair: two
@@ -393,20 +400,20 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
             DiscoCache disco0 = ignite.context().discovery().discoCache();
 
             if (ver0 != null && disco0 != null && ver0.equals(ignite.context().discovery().topologyVersionEx())) {
-                topVer = ver0;
+                startTopVer = ver0;
                 disco = disco0;
 
                 break;
             }
         }
 
-        if (topVer == null || !topVer.initialized()) {
+        if (startTopVer == null || !startTopVer.initialized()) {
             snap.reasons.add("Failed to fix the topology version: the topology is changing");
 
             return snap;
         }
 
-        snap.topVer = topVer;
+        snap.startTopVer = startTopVer;
 
         // The affinity of a non-active cluster is not initialized: GridAffinityAssignmentV2 is created with a
         // null assignment and the first get(part) fails. The activation guard is therefore placed before any
@@ -456,7 +463,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
             if (killSet.contains(node.id()))
                 continue;
 
-            if (node.order() > topVer.topologyVersion())
+            if (node.order() > startTopVer.topologyVersion())
                 continue;
 
             srvNodes.add(node);
@@ -510,21 +517,21 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
                 continue;
             }
 
-            if (!groupReady(grp, topVer, snap.reasons)) {
+            if (!groupReady(grp, startTopVer, snap.reasons)) {
                 available = false;
 
                 continue;
             }
 
             try {
-                AffinityAssignment aff = grp.affinity().readyAffinity(topVer);
+                AffinityAssignment aff = grp.affinity().readyAffinity(startTopVer);
 
                 affs.put(grp.groupId(), aff);
                 affNodes.put(grpName, aff.nodes().size());
             }
             catch (IllegalStateException e) {
                 snap.reasons.add("Affinity is not initialized for the topology version [group=" + grpName +
-                    ", topVer=" + topVer + ']');
+                    ", startTopVer=" + startTopVer + ']');
 
                 available = false;
             }
@@ -546,13 +553,13 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
      * {@link GridDhtPartitionTopology#initialized()} returned {@code true}.
      *
      * @param grp Cache group context.
-     * @param topVer Topology version of the snapshot.
+     * @param startTopVer Topology version of the snapshot.
      * @param reasons Diagnostics to append the reason to.
      * @return {@code True} if the group is ready.
      */
     private static boolean groupReady(
         CacheGroupContext grp,
-        AffinityTopologyVersion topVer,
+        AffinityTopologyVersion startTopVer,
         List<String> reasons
     ) {
         String grpName = grp.cacheOrGroupName();
@@ -576,9 +583,9 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
         AffinityTopologyVersion rdyVer = top.readyTopologyVersion();
 
-        if (rdyVer.compareTo(topVer) < 0) {
+        if (rdyVer.compareTo(startTopVer) < 0) {
             reasons.add("DHT topology is not ready for the snapshot topology version [group=" + grpName +
-                ", readyTopVer=" + rdyVer + ", topVer=" + topVer + ']');
+                ", readyTopVer=" + rdyVer + ", startTopVer=" + startTopVer + ']');
 
             return false;
         }
@@ -657,7 +664,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     /** Mutable holder of the collected snapshot data. */
     private static class Snapshot {
         /** Topology version of the snapshot. */
-        private AffinityTopologyVersion topVer = AffinityTopologyVersion.NONE;
+        private AffinityTopologyVersion startTopVer = AffinityTopologyVersion.NONE;
 
         /** Server nodes of the snapshot. */
         private List<ClusterNode> nodes = Collections.emptyList();
