@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.management.api.CommandUtils;
 import org.apache.ignite.internal.management.api.ComputeCommand;
+import org.apache.ignite.internal.util.typedef.X;
 
 /**
  * Command that prints groups of server nodes which can be stopped simultaneously without losing data.
@@ -63,6 +64,14 @@ public class SafeToStopSetsCommand implements ComputeCommand<SafeToStopSetsComma
             throw new IllegalArgumentException("The command requires at least one server node in the topology");
 
         return coordinator;
+    }
+
+    /** {@inheritDoc} */
+    @Override public SafeToStopSetsTaskResult handleException(Exception e, Consumer<String> printer) throws Exception {
+        if (X.hasCause(e, IllegalArgumentException.class))
+            throw X.cause(e, IllegalArgumentException.class);
+
+        throw e;
     }
 
     /** {@inheritDoc} */
