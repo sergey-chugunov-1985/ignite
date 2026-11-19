@@ -36,7 +36,7 @@ import static org.junit.Assert.fail;
 /**
  * Tests the operator-facing output of {@link SafeToStopSetsCommand}: the diagnostics header (topology
  * version, strategy identity, verification mode with its reasons), the group listing with singletons
- * separated, the all-singletons message and the graceful-shutdown block; and the executor selection:
+ * separated and the graceful-shutdown block; and the executor selection:
  * the job is mapped to the coordinator, the server node with the lowest order.
  */
 public class SafeToStopSetsCommandSelfTest {
@@ -85,25 +85,6 @@ public class SafeToStopSetsCommandSelfTest {
         assertTrue(out.toString(), out.contains("Verified: structure-only"));
         assertTrue(out.toString(), out.contains("  Reason: The partition owners were not read"));
         assertTrue(out.toString(), out.contains("  Reason: The ownership does not match the affinity"));
-    }
-
-    /**
-     * When every group is a singleton the command does not print a group listing at all, only the
-     * explicit message and the singleton block.
-     *
-     * @throws Exception If failed.
-     */
-    @Test
-    public void testPrintResultAllSingletons() {
-        SafeToStopSetsTaskResult res = result(Arrays.asList(singleton("a"), singleton("b")),
-            SafeToStopSetsVerification.Mode.EXACT.name(), Collections.emptyList(), Collections.emptyList());
-
-        List<String> out = print(res);
-
-        assertTrue(out.toString(), out.contains("No group of more than one node is safe: every node can be stopped only on its own."));
-        assertFalse(out.toString(), out.stream().anyMatch(line -> line.startsWith("Groups")));
-        assertTrue(out.toString(), out.contains("  a"));
-        assertTrue(out.toString(), out.contains("  b"));
     }
 
     /**

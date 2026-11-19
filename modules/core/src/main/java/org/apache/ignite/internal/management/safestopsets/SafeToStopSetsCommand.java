@@ -106,9 +106,7 @@ public class SafeToStopSetsCommand implements ComputeCommand<SafeToStopSetsComma
             }
         }
 
-        if (groupLines.isEmpty())
-            printer.accept("No group of more than one node is safe: every node can be stopped only on its own.");
-        else {
+        if (!groupLines.isEmpty()) {
             printer.accept("Groups (stop the nodes of one group at a time, then re-run this command):");
             groupLines.forEach(printer);
         }

@@ -17,6 +17,7 @@
 
 package org.apache.ignite.internal.management.safestopsets;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -153,6 +154,9 @@ public class SafeToStopSetsTask
                 throw new IllegalArgumentException("unstable: topology changed during computation: "
                     + start + " -> " + current + ", retry");
 
+            if (groups.stream().noneMatch(group -> group.size() > 1))
+                throw noSafeGroup(ctx);
+
             List<SafeToStopSetsNodeInfo> nodes = ctx.nodes().stream()
                 .map(SafeToStopSetsTask::nodeInfo)
                 .collect(Collectors.toList());
@@ -179,6 +183,27 @@ public class SafeToStopSetsTask
          */
         private static IllegalArgumentException notReady(SafeToStopSetsContextImpl ctx) {
             return new IllegalArgumentException("not-ready: " + String.join("; ", ctx.notReadyReasons()));
+        }
+
+        /**
+         * Operator rejection for the case when no two nodes may be stopped together: the message carries every
+         * node as a singleton and the reason.
+         *
+         * @param ctx Snapshot whose nodes cannot be grouped.
+         * @return The operator rejection, exit code 1.
+         */
+        private static IllegalArgumentException noSafeGroup(SafeToStopSetsContextImpl ctx) {
+            List<String> singletons = new ArrayList<>(ctx.nodes().size());
+
+            for (ClusterNode node : ctx.nodes())
+                singletons.add(String.valueOf(node.consistentId()));
+
+            String reason = ctx.nodes().size() == 1
+                ? "the cluster has a single server node"
+                : "no cache group allows more than one node to be stopped together";
+
+            return new IllegalArgumentException("No safe group of more than one node exists; every node can be "
+                + "stopped only on its own: " + singletons + " (" + reason + ')');
         }
 
         /** {@inheritDoc} */
