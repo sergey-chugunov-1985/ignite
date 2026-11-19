@@ -17,8 +17,13 @@
 
 package org.apache.ignite.util;
 
+import org.apache.ignite.IgniteCache;
+import org.apache.ignite.cache.CacheRebalanceMode;
+import org.apache.ignite.cache.PartitionLossPolicy;
 import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.management.safestopsets.BackupsCountSafeToStopSetsStrategy;
+import org.apache.ignite.internal.management.safestopsets.SafeToStopSetsContextImpl;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.junit.Test;
 
@@ -146,6 +151,55 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
     }
 
     /**
+     * A stable cluster: the ownership matches the affinity assignment, so the default strategy does not read
+     * the partition owners and the answer is derived from the configuration only. The verification is marked
+     * structure-only with the reason, exit code 0. The cache uses a non-{@code IGNORE} loss policy: with the
+     * default policy the topology does not track partition loss and the structure-only proof is not legal.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testStructureOnlyOnStableCluster() throws Exception {
+        startGrids(4);
+
+        createCache(CACHE_NAME, 2, null, PartitionLossPolicy.READ_WRITE_SAFE);
+
+        fillCache(CACHE_NAME);
+
+        awaitPartitionMapExchange();
+
+        waitForOwnershipMatched();
+
+        String out = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS);
+
+        GridTestUtils.assertContains(log, out, "Verified: structure-only");
+        GridTestUtils.assertContains(log, out, "Reason: The partition owners were not read");
+        GridTestUtils.assertContains(log, out,
+            "Groups (stop the nodes of one group at a time, then re-run this command):");
+        assertFalse("exact must be absent, output:\n" + out, out.contains("Verified: exact"));
+    }
+
+    /**
+     * A cache with rebalance disabled cannot prove that the ownership matches the affinity, so the default
+     * strategy reads the actual partition owners and the answer is verified semantically: exact, exit code 0.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testExactWhenOwnersAreRead() throws Exception {
+        startGrids(4);
+
+        createCache(CACHE_NAME, 2, CacheRebalanceMode.NONE);
+
+        String out = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS);
+
+        GridTestUtils.assertContains(log, out, "Verified: exact");
+        GridTestUtils.assertContains(log, out,
+            "Groups (stop the nodes of one group at a time, then re-run this command):");
+        assertFalse("structure-only must be absent, output:\n" + out, out.contains("Verified: structure-only"));
+    }
+
+    /**
      * Executes the command and checks the no-safe-group operator rejection: exit code 1 and the message
      * that lists every node as a singleton.
      *
@@ -176,12 +230,71 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
      * @throws Exception If failed.
      */
     private void createCache(String name, int backups) throws Exception {
-        grid(0).createCache(new CacheConfiguration<>()
+        createCache(name, backups, null, null);
+    }
+
+    /**
+     * @param name Cache name.
+     * @param backups Number of backups for the test cache.
+     * @param rebalanceMode Rebalance mode, {@code null} for the default.
+     * @throws Exception If failed.
+     */
+    private void createCache(String name, int backups, CacheRebalanceMode rebalanceMode) throws Exception {
+        createCache(name, backups, rebalanceMode, null);
+    }
+
+    /**
+     * @param name Cache name.
+     * @param backups Number of backups for the test cache.
+     * @param rebalanceMode Rebalance mode, {@code null} for the default.
+     * @param lossPolicy Partition loss policy, {@code null} for the default.
+     * @throws Exception If failed.
+     */
+    private void createCache(String name, int backups, CacheRebalanceMode rebalanceMode,
+        PartitionLossPolicy lossPolicy) throws Exception {
+        CacheConfiguration<Object, Object> cfg = new CacheConfiguration<>()
             .setName(name)
             .setCacheMode(PARTITIONED)
             .setBackups(backups)
-            .setAffinity(new org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction(false, PARTS)));
+            .setAffinity(new org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction(false, PARTS));
+
+        if (rebalanceMode != null)
+            cfg.setRebalanceMode(rebalanceMode);
+
+        if (lossPolicy != null)
+            cfg.setPartitionLossPolicy(lossPolicy);
+
+        grid(0).createCache(cfg);
 
         awaitPartitionMapExchange();
+    }
+
+    /**
+     * Writes enough entries to touch every partition and settle the DHT: the partition supply completes and
+     * the ownership matches the affinity assignment, which is the precondition of the structure-only proof.
+     *
+     * @param name Cache name.
+     * @throws Exception If failed.
+     */
+    private void fillCache(String name) throws Exception {
+        IgniteCache<Object, Object> cache = grid(0).cache(name);
+
+        for (int i = 0; i < 1000; i++)
+            cache.put(i, i);
+    }
+
+    /**
+     * Waits until a fresh snapshot of the cluster reports that the actual ownership matches the affinity
+     * assignment: the precondition of the structure-only proof. The DHT settles only after the partition
+     * supply completes, which may take a moment beyond {@link #awaitPartitionMapExchange()}.
+     *
+     * @throws Exception If the condition is not met within the timeout.
+     */
+    private void waitForOwnershipMatched() throws Exception {
+        assertTrue("The ownership did not settle to match the affinity", GridTestUtils.waitForCondition(() -> {
+            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl((IgniteEx) grid(0));
+
+            return ctx.partitionOwnersAvailable() && ctx.ownershipMatchesAffinity();
+        }, 15_000));
     }
 }
