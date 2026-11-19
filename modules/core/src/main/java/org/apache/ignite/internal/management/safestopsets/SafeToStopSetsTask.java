@@ -20,6 +20,7 @@ package org.apache.ignite.internal.management.safestopsets;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.ignite.IgniteException;
 import org.apache.ignite.cluster.ClusterNode;
@@ -35,11 +36,13 @@ import org.jetbrains.annotations.Nullable;
 import static org.apache.ignite.plugin.security.SecurityPermissionSetBuilder.NO_PERMISSIONS;
 
 /**
- * Task that collects the read-only cluster snapshot used by {@link SafeToStopSetsCommand}.
+ * Task that computes the safe-to-stop sets on the server nodes.
  * <p>
- * A job is mapped to every server node, so that a later version of the command is able to compare the topology
- * version observed by each node. The answer is the snapshot reported by the node with the lowest
- * {@link ClusterNode#order()}, which makes the result independent of the reduce order.
+ * The pipeline of a job: a read-only cluster snapshot is taken, the strategy is resolved by name, the groups
+ * are computed and the result is always verified against the snapshot by {@link SafeToStopSetsSupport}. A
+ * failed verification or a snapshot that is not usable fails the job: no partial answer is ever transferred
+ * to the client. The answer is the one produced by the node with the lowest {@link ClusterNode#order()},
+ * which makes the result independent of the reduce order.
  */
 @GridInternal
 public class SafeToStopSetsTask
@@ -121,14 +124,37 @@ public class SafeToStopSetsTask
 
         /** {@inheritDoc} */
         @Override protected SafeToStopSetsTaskResult run(SafeToStopSetsCommandArg arg) {
-            long topVer = ignite.cluster().topologyVersion();
+            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(ignite);
 
-            List<SafeToStopSetsNodeInfo> nodes = ignite.cluster().forServers().nodes().stream()
+            if (!ctx.partitionOwnersAvailable())
+                throw new IgniteException("Cannot compute safe-to-stop sets: the cluster is not ready: "
+                    + ctx.notReadyReasons());
+
+            SafeToStopSetsStrategy strategy = SafeToStopSetsStrategies.resolve(arg.strategy());
+
+            List<List<UUID>> groups = strategy.split(ctx);
+
+            SafeToStopSetsVerification verification = SafeToStopSetsSupport.verify(groups, ctx);
+
+            if (verification.failed())
+                throw new IgniteException("Cannot compute safe-to-stop sets: verification failed ["
+                    + verification.mode() + "]: " + verification.violations());
+
+            List<SafeToStopSetsNodeInfo> nodes = ctx.nodes().stream()
                 .map(SafeToStopSetsTask::nodeInfo)
-                .sorted(Comparator.comparing(SafeToStopSetsNodeInfo::consistentId))
                 .collect(Collectors.toList());
 
-            return new SafeToStopSetsTaskResult(nodes, topVer);
+            return new SafeToStopSetsTaskResult(
+                nodes,
+                ctx.affinityTopologyVersion().topologyVersion(),
+                groups,
+                verification.mode().name(),
+                verification.notVerified(),
+                strategy.name(),
+                strategy.version(),
+                strategy.getClass().getName(),
+                ctx.gracefulShutdownNodes()
+            );
         }
 
         /** {@inheritDoc} */
