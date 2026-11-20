@@ -18,6 +18,7 @@
 package org.apache.ignite.util;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -54,6 +55,9 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
 
     /** Number of partitions of the test cache. */
     private static final int PARTS = 32;
+
+    /** Number of nodes of the persistent cluster. */
+    private static final int PERSISTENT_NODES = 6;
 
     /** Whether the test cluster must start in the inactive state. */
     private boolean inactiveOnStart;
@@ -277,6 +281,42 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
     }
 
     /**
+     * A persistent cluster: once the baseline topology is set (at activation) the command completes with
+     * exit code 0, and two consecutive runs on the unchanged cluster produce an identical answer
+     * (idempotency): the command never changes the cluster, the baseline or the cache state.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testIdempotentOnPersistentCluster() throws Exception {
+        // The consistent ids are stable across the parameterized runs, so remove the per-node data left
+        // by the previous run: otherwise the nodes would restore the cache created there.
+        for (int i = 0; i < PERSISTENT_NODES; i++)
+            cleanPersistenceDir(getTestIgniteInstanceName(i));
+
+        persistenceEnable(true);
+
+        IgniteEx crd = startGrids(PERSISTENT_NODES);
+
+        crd.cluster().baselineAutoAdjustEnabled(false);
+
+        crd.cluster().state(ClusterState.ACTIVE);
+
+        createCache(CACHE_NAME, 2);
+
+        String out1 = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS);
+
+        String out2 = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS);
+
+        assertEquals("The answer must be idempotent, first run:\n" + answer(out1) +
+            "\nsecond run:\n" + answer(out2), answer(out1), answer(out2));
+
+        GridTestUtils.assertContains(log, out1, "Topology version: ");
+        GridTestUtils.assertContains(log, out1,
+            "Groups (stop the nodes of one group at a time, then re-run this command):");
+    }
+
+    /**
      * The computation is always mapped to the coordinator (the server node with the lowest {@code order()}),
      * so the answer must not depend on which node the command is issued against: connecting to the
      * coordinator and to each non-coordinator yields the same topology version, the same groups and the
@@ -330,6 +370,33 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
         res.sort(Comparator.comparing(grp -> grp.get(0).toString()));
 
         return res;
+    }
+
+    /**
+     * Extracts the command answer from the output: the block between the argument banner and the
+     * "finished" line. The banner itself carries the start timestamp, the completion time and the
+     * execution time, which differ on every run and are not part of the answer.
+     *
+     * @param out Full command output.
+     * @return The answer block.
+     */
+    private static String answer(String out) {
+        List<String> lines = Arrays.asList(out.split("\\r?\\n"));
+
+        int from = 0;
+        int to = lines.size();
+
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+
+            if (from == 0 && line.startsWith("Arguments:"))
+                from = i + 2;
+
+            if (line.startsWith("Command [") && line.contains("finished"))
+                to = i;
+        }
+
+        return String.join("\n", lines.subList(from, to));
     }
 
     /**
