@@ -17,13 +17,22 @@
 
 package org.apache.ignite.util;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.CacheRebalanceMode;
 import org.apache.ignite.cache.PartitionLossPolicy;
+import org.apache.ignite.cluster.ClusterState;
 import org.apache.ignite.configuration.CacheConfiguration;
+import org.apache.ignite.configuration.IgniteConfiguration;
 import org.apache.ignite.internal.IgniteEx;
 import org.apache.ignite.internal.management.safestopsets.BackupsCountSafeToStopSetsStrategy;
 import org.apache.ignite.internal.management.safestopsets.SafeToStopSetsContextImpl;
+import org.apache.ignite.internal.management.safestopsets.SafeToStopSetsNodeInfo;
+import org.apache.ignite.internal.management.safestopsets.SafeToStopSetsTaskResult;
 import org.apache.ignite.testframework.GridTestUtils;
 import org.junit.Test;
 
@@ -46,6 +55,21 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
     /** Number of partitions of the test cache. */
     private static final int PARTS = 32;
 
+    /** Whether the test cluster must start in the inactive state. */
+    private boolean inactiveOnStart;
+
+    /** {@inheritDoc} */
+    @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
+        IgniteConfiguration cfg = super.getConfiguration(igniteInstanceName);
+
+        if (inactiveOnStart) {
+            cfg.setClusterStateOnStart(ClusterState.INACTIVE);
+            cfg.setAutoActivationEnabled(false);
+        }
+
+        return cfg;
+    }
+
     /** {@inheritDoc} */
     @Override public void beforeTest() throws Exception {
         super.beforeTest();
@@ -58,6 +82,8 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
     /** {@inheritDoc} */
     @Override protected void afterTest() throws Exception {
         super.afterTest();
+
+        inactiveOnStart = false;
 
         stopAllGrids();
     }
@@ -197,6 +223,113 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
         GridTestUtils.assertContains(log, out,
             "Groups (stop the nodes of one group at a time, then re-run this command):");
         assertFalse("structure-only must be absent, output:\n" + out, out.contains("Verified: structure-only"));
+    }
+
+    /**
+     * A non-activated cluster: the snapshot is not usable, the command fails closed with the not-ready
+     * operator rejection, exit code 1, and no answer is printed.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testInactiveClusterIsNotReady() throws Exception {
+        inactiveOnStart = true;
+
+        startGrids(4);
+
+        String out = exec(EXIT_CODE_INVALID_ARGUMENTS, SAFE_TO_STOP_SETS);
+
+        GridTestUtils.assertContains(log, out, "Check arguments.");
+        GridTestUtils.assertContains(log, out, "not-ready:");
+        GridTestUtils.assertContains(log, out, "Cluster is not active");
+        assertFalse("No answer must be printed, output:\n" + out, out.contains("Topology version:"));
+    }
+
+    /**
+     * A client node lives in the topology alongside the servers: it holds no partitions, so the command
+     * succeeds, prints the server groups, and the client is absent both from the snapshot and from every
+     * group.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testClientNodeExcludedFromGroups() throws Exception {
+        startGrids(4);
+
+        startClientGrid(CLIENT_NODE_NAME_PREFIX);
+
+        createCache(CACHE_NAME, 2);
+
+        String out = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS);
+
+        GridTestUtils.assertContains(log, out,
+            "Groups (stop the nodes of one group at a time, then re-run this command):");
+
+        SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult) lastOperationResult;
+
+        UUID clientId = grid(CLIENT_NODE_NAME_PREFIX).localNode().id();
+
+        for (SafeToStopSetsNodeInfo node : res.nodes())
+            assertFalse("The client node must not be part of the snapshot", clientId.equals(node.id()));
+
+        for (List<UUID> grp : res.groups())
+            assertFalse("The client node must not belong to any group", grp.contains(clientId));
+    }
+
+    /**
+     * The computation is always mapped to the coordinator (the server node with the lowest {@code order()}),
+     * so the answer must not depend on which node the command is issued against: connecting to the
+     * coordinator and to each non-coordinator yields the same topology version, the same groups and the
+     * same verification mode ({@code D25}).
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testAnswerIdenticalRegardlessOfConnectionNode() throws Exception {
+        startGrids(3);
+
+        createCache(CACHE_NAME, 2);
+
+        // grid(0) is the coordinator (lowest order()); the computation is mapped there in every run.
+        exec(EXIT_CODE_OK, "--port", connectorPort(grid(0)), SAFE_TO_STOP_SETS);
+
+        SafeToStopSetsTaskResult viaCoordinator = (SafeToStopSetsTaskResult) lastOperationResult;
+
+        for (int i = 1; i < 3; i++) {
+            exec(EXIT_CODE_OK, "--port", connectorPort(grid(i)), SAFE_TO_STOP_SETS);
+
+            SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult) lastOperationResult;
+
+            assertEquals("topVer must not depend on the connection node",
+                viaCoordinator.topVer(), res.topVer());
+            assertEquals("mode must not depend on the connection node",
+                viaCoordinator.mode(), res.mode());
+            assertEquals("groups must not depend on the connection node",
+                sortedGroups(viaCoordinator.groups()), sortedGroups(res.groups()));
+        }
+    }
+
+    /**
+     * A copy of the groups normalized for an order-insensitive comparison: the node ids within each group
+     * are sorted, and the groups themselves are sorted by their first node.
+     *
+     * @param grps Groups to normalize.
+     * @return The normalized groups.
+     */
+    private static List<List<UUID>> sortedGroups(List<List<UUID>> grps) {
+        List<List<UUID>> res = new ArrayList<>(grps.size());
+
+        for (List<UUID> grp : grps) {
+            List<UUID> copy = new ArrayList<>(grp);
+
+            Collections.sort(copy);
+
+            res.add(copy);
+        }
+
+        res.sort(Comparator.comparing(grp -> grp.get(0).toString()));
+
+        return res;
     }
 
     /**
