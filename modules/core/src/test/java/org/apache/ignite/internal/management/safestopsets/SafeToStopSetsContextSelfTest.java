@@ -18,6 +18,8 @@
 package org.apache.ignite.internal.management.safestopsets;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +62,12 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
 
     /** Cache with the {@code IGNORE} partition loss policy. */
     private static final String IGNORE_LOSS_CACHE_NAME = "safe-to-stop-sets-ignore-loss-cache";
+
+    /** Cache without backups. */
+    private static final String NO_BACKUP_CACHE_NAME = "safe-to-stop-sets-no-backup-cache";
+
+    /** Cache without backups whose configuration would block the structure-only proof. */
+    private static final String NO_BACKUP_BLOCKED_CACHE_NAME = "safe-to-stop-sets-no-backup-blocked-cache";
 
     /** Number of partitions of the test caches. */
     private static final int PARTS = 32;
@@ -308,6 +316,82 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
         SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0));
 
         assertTrue(ctx.structureOnlyBlockers().toString(), ctx.structureOnlyBlockers().isEmpty());
+    }
+
+    /**
+     * A cache group without backups leaves the snapshot entirely when the exclusion is requested: it is absent
+     * from the group configuration, from the affinity view, from the configuration-level blockers and from the
+     * partition owners; its name is reported so the operator can be told what the answer does not cover. The
+     * exclusion is opt-in: {@code null} keeps every group.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testNoBackupGroupsAreExcluded() throws Exception {
+        startGridsMultiThreaded(3);
+
+        createCache(partitionedCache(CACHE_NAME, 1));
+        createCache(partitionedCache(NO_BACKUP_CACHE_NAME, 0));
+
+        // A blocker of the excluded group must not block the answer either.
+        createCache(new CacheConfiguration<>(NO_BACKUP_BLOCKED_CACHE_NAME)
+            .setCacheMode(CacheMode.PARTITIONED)
+            .setBackups(0)
+            .setPartitionLossPolicy(PartitionLossPolicy.READ_WRITE_SAFE)
+            .setAffinity(new CustomAffinityFunction(false, PARTS)));
+
+        awaitPartitionMapExchange();
+
+        SafeToStopSetsContextImpl kept = new SafeToStopSetsContextImpl(grid(0));
+
+        assertEquals(new HashSet<>(Arrays.asList(CACHE_NAME, NO_BACKUP_CACHE_NAME, NO_BACKUP_BLOCKED_CACHE_NAME)),
+            kept.cacheGroups().keySet());
+        assertTrue("The exclusion must be opt-in: " + kept.excludedNoBackupGroups(),
+            kept.excludedNoBackupGroups().isEmpty());
+
+        for (SafeToStopSetsNoBackupMode mode : SafeToStopSetsNoBackupMode.values()) {
+            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0), mode);
+
+            assertEquals(Collections.singleton(CACHE_NAME), ctx.cacheGroups().keySet());
+            assertEquals("The excluded names are reported in the group name order",
+                Arrays.asList(NO_BACKUP_BLOCKED_CACHE_NAME, NO_BACKUP_CACHE_NAME), ctx.excludedNoBackupGroups());
+
+            assertTrue("The configuration of an excluded group must not block the answer: " + ctx.structureOnlyBlockers(),
+                ctx.structureOnlyBlockers().isEmpty());
+
+            assertNotNull(ctx.affinityNodesCount(CACHE_NAME));
+
+            Set<String> ownerGroups = new HashSet<>();
+
+            for (PartitionOwners owners : ctx.partitionOwners())
+                ownerGroups.add(owners.cacheGroupName());
+
+            assertEquals("The partitions of an excluded group must not be read", Collections.singleton(CACHE_NAME),
+                ownerGroups);
+        }
+    }
+
+    /**
+     * A replicated group has {@link Integer#MAX_VALUE} as its configured number of backups, so it is never
+     * treated as a group without backups.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testReplicatedGroupIsNotExcluded() throws Exception {
+        startGridsMultiThreaded(3);
+
+        createCache(new CacheConfiguration<>(REPL_CACHE_NAME)
+            .setCacheMode(CacheMode.REPLICATED)
+            .setPartitionLossPolicy(PartitionLossPolicy.READ_WRITE_SAFE));
+
+        awaitPartitionMapExchange();
+
+        SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0), SafeToStopSetsNoBackupMode.IGNORE);
+
+        assertEquals(Collections.singleton(REPL_CACHE_NAME), ctx.cacheGroups().keySet());
+        assertTrue("A replicated group must not be excluded: " + ctx.excludedNoBackupGroups(),
+            ctx.excludedNoBackupGroups().isEmpty());
     }
 
     /**

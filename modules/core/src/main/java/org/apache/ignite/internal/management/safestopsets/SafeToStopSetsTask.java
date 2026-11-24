@@ -120,10 +120,13 @@ public class SafeToStopSetsTask
 
         /** {@inheritDoc} */
         @Override protected SafeToStopSetsTaskResult run(SafeToStopSetsCommandArg arg) {
-            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(ignite);
+            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(ignite, arg.noBackup());
 
             if (!ctx.partitionOwnersAvailable())
                 throw notReady(ctx);
+
+            if (ctx.cacheGroups().isEmpty() && !ctx.excludedNoBackupGroups().isEmpty())
+                throw nothingToCompute(ctx);
 
             SafeToStopSetsStrategy strategy = SafeToStopSetsStrategies.resolve(arg.strategy());
 
@@ -168,10 +171,24 @@ public class SafeToStopSetsTask
                 verification.mode().name(),
                 verification.notVerified(),
                 strategy.name(),
-                strategy.version(),
                 strategy.getClass().getName(),
-                ctx.gracefulShutdownNodes()
+                ctx.gracefulShutdownNodes(),
+                ctx.excludedNoBackupGroups()
             );
+        }
+
+        /**
+         * Operator rejection for the case when every cache group was excluded from the computation: there is no
+         * layout left to protect, and printing the whole cluster as one group would invite the operator to stop
+         * every node that holds the only copy of its data.
+         *
+         * @param ctx Snapshot with no groups in scope.
+         * @return The operator rejection, exit code 1.
+         */
+        private static IllegalArgumentException nothingToCompute(SafeToStopSetsContextImpl ctx) {
+            return new IllegalArgumentException("Nothing to compute: every cache group was excluded from the "
+                + "computation as a group without backups " + ctx.excludedNoBackupGroups()
+                + "; re-run the command without --no-backup to compute over every group");
         }
 
         /**

@@ -59,7 +59,7 @@ public class SafeToStopSetsCommandSelfTest {
 
         assertTrue(out.toString(), out.contains("Topology version: 7"));
         assertTrue(out.toString(), out.contains(
-            "Strategy: backups-count [version=n/a, class=" + BackupsCountSafeToStopSetsStrategy.class.getName() + "]"));
+            "Strategy: backups-count [class=" + BackupsCountSafeToStopSetsStrategy.class.getName() + "]"));
         assertTrue(out.toString(), out.contains("Verified: exact"));
         assertTrue(out.toString(), out.contains("Groups (stop the nodes of one group at a time, then re-run this command):"));
         assertTrue(out.toString(), out.contains("  [1] a, b"));
@@ -123,6 +123,72 @@ public class SafeToStopSetsCommandSelfTest {
 
         assertTrue(out.toString(), out.contains("Nodes being stopped gracefully (excluded from the computation):"));
         assertTrue(out.toString(), out.contains("  " + killSet));
+    }
+
+    /**
+     * In the {@code warning} mode the cache groups excluded from the computation are listed, so the operator
+     * sees which data the answer does not cover.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testPrintResultNoBackupWarningListsGroups() {
+        SafeToStopSetsTaskResult res = result(Arrays.asList(Arrays.asList("a", "b")),
+            SafeToStopSetsVerification.Mode.EXACT.name(), Collections.emptyList(), Collections.emptyList(),
+            Arrays.asList("cache-a", "cache-b"));
+
+        SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
+
+        arg.noBackup(SafeToStopSetsNoBackupMode.WARNING);
+
+        List<String> out = print(res, arg);
+
+        assertTrue(out.toString(), out.contains(
+            "Caches without backups (excluded from the computation, the answer does not cover them):"));
+        assertTrue(out.toString(), out.contains("  cache-a"));
+        assertTrue(out.toString(), out.contains("  cache-b"));
+    }
+
+    /**
+     * In the {@code ignore} mode the excluded cache groups are not mentioned at all: the operator asked for a
+     * silent exclusion.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testPrintResultNoBackupIgnoreIsSilent() {
+        SafeToStopSetsTaskResult res = result(Arrays.asList(Arrays.asList("a", "b")),
+            SafeToStopSetsVerification.Mode.EXACT.name(), Collections.emptyList(), Collections.emptyList(),
+            Arrays.asList("cache-a", "cache-b"));
+
+        SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
+
+        arg.noBackup(SafeToStopSetsNoBackupMode.IGNORE);
+
+        List<String> out = print(res, arg);
+
+        assertEquals(print(res), out);
+        assertFalse(out.toString(), out.stream().anyMatch(line -> line.contains("without backups")));
+    }
+
+    /**
+     * The section is printed only when something was actually excluded: the {@code warning} mode on a cluster
+     * without caches that have no backups must not carry an empty header.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testPrintResultNoBackupWarningWithoutExcludedGroups() {
+        SafeToStopSetsTaskResult res = result(Arrays.asList(Arrays.asList("a", "b")),
+            SafeToStopSetsVerification.Mode.EXACT.name(), Collections.emptyList(), Collections.emptyList());
+
+        SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
+
+        arg.noBackup(SafeToStopSetsNoBackupMode.WARNING);
+
+        List<String> out = print(res, arg);
+
+        assertFalse(out.toString(), out.stream().anyMatch(line -> line.contains("without backups")));
     }
 
     /**
@@ -228,14 +294,23 @@ public class SafeToStopSetsCommandSelfTest {
 
     /**
      * @param res Result to print.
+     * @param arg Command argument that shapes the output.
+     * @return The lines the command printed.
+     */
+    private List<String> print(SafeToStopSetsTaskResult res, SafeToStopSetsCommandArg arg) {
+        List<String> out = new ArrayList<>();
+
+        cmd.printResult(arg, res, out::add);
+
+        return out;
+    }
+
+    /**
+     * @param res Result to print.
      * @return The lines the command printed.
      */
     private List<String> print(SafeToStopSetsTaskResult res) {
-        List<String> out = new ArrayList<>();
-
-        cmd.printResult(new SafeToStopSetsCommandArg(), res, out::add);
-
-        return out;
+        return print(res, new SafeToStopSetsCommandArg());
     }
 
     /**
@@ -261,6 +336,26 @@ public class SafeToStopSetsCommandSelfTest {
         List<String> notVerified,
         List<UUID> gracefulShutdownNodes
     ) {
+        return result(groups, mode, notVerified, gracefulShutdownNodes, Collections.emptyList());
+    }
+
+    /**
+     * Builds a result: the node of each group gets its consistent ID from the group contents in order.
+     *
+     * @param groups Groups of consistent IDs (the IDs are synthetic, one per node).
+     * @param mode Verification mode.
+     * @param notVerified Reasons of the structure-only qualification.
+     * @param gracefulShutdownNodes Kill set.
+     * @param excludedNoBackupGroups Cache groups excluded from the computation.
+     * @return The result.
+     */
+    private static SafeToStopSetsTaskResult result(
+        List<List<String>> groups,
+        String mode,
+        List<String> notVerified,
+        List<UUID> gracefulShutdownNodes,
+        List<String> excludedNoBackupGroups
+    ) {
         List<SafeToStopSetsNodeInfo> nodes = new ArrayList<>();
         List<List<UUID>> nodeGroups = new ArrayList<>();
 
@@ -284,9 +379,9 @@ public class SafeToStopSetsCommandSelfTest {
             mode,
             notVerified,
             BackupsCountSafeToStopSetsStrategy.NAME,
-            "n/a",
             BackupsCountSafeToStopSetsStrategy.class.getName(),
-            gracefulShutdownNodes
+            gracefulShutdownNodes,
+            excludedNoBackupGroups
         );
     }
 }

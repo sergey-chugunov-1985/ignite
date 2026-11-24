@@ -53,6 +53,9 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
     /** Test cache name. */
     private static final String CACHE_NAME = "safe-to-stop-sets-cache";
 
+    /** Test cache name of the cache without backups. */
+    private static final String NO_BACKUP_CACHE_NAME = "safe-to-stop-sets-no-backup-cache";
+
     /** Number of partitions of the test cache. */
     private static final int PARTS = 32;
 
@@ -347,6 +350,60 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
             assertEquals("groups must not depend on the connection node",
                 sortedGroups(viaCoordinator.groups()), sortedGroups(res.groups()));
         }
+    }
+
+    /**
+     * A cache without backups forbids every group of more than one node, so a cluster that has one is rejected
+     * unless the operator excludes such caches. With {@code --no-backup ignore} the answer covers the remaining
+     * groups and the excluded caches are not mentioned; with {@code --no-backup warning} they are listed.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testNoBackupCachesAreExcludedOnRequest() throws Exception {
+        startGrids(4);
+
+        createCache(CACHE_NAME, 2);
+        createCache(NO_BACKUP_CACHE_NAME, 0);
+
+        String rejected = exec(EXIT_CODE_INVALID_ARGUMENTS, SAFE_TO_STOP_SETS);
+
+        GridTestUtils.assertContains(log, rejected, "No safe group of more than one node");
+
+        String ignored = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS, "--no-backup", "ignore");
+
+        GridTestUtils.assertContains(log, ignored,
+            "Groups (stop the nodes of one group at a time, then re-run this command):");
+        assertFalse("The ignore mode must stay silent about the excluded caches, output:\n" + ignored,
+            ignored.contains("without backups"));
+
+        String warned = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS, "--no-backup", "warning");
+
+        GridTestUtils.assertContains(log, warned,
+            "Caches without backups (excluded from the computation, the answer does not cover them):");
+        GridTestUtils.assertContains(log, warned, "  " + NO_BACKUP_CACHE_NAME);
+
+        SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult) lastOperationResult;
+
+        assertEquals(Collections.singletonList(NO_BACKUP_CACHE_NAME), res.excludedNoBackupGroups());
+    }
+
+    /**
+     * An unknown value of {@code --no-backup} is an operator error: exit code 1 and the expected value in the
+     * message.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testUnknownNoBackupMode() throws Exception {
+        startGrids(4);
+
+        createCache(CACHE_NAME, 2);
+
+        String out = exec(EXIT_CODE_INVALID_ARGUMENTS, SAFE_TO_STOP_SETS, "--no-backup", "bogus");
+
+        GridTestUtils.assertContains(log, out, "Check arguments.");
+        GridTestUtils.assertContains(log, out, "bogus");
     }
 
     /**

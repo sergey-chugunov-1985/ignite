@@ -45,6 +45,7 @@ import org.apache.ignite.internal.processors.cache.distributed.dht.topology.Grid
 import org.apache.ignite.internal.processors.cluster.DiscoveryDataClusterState;
 import org.apache.ignite.internal.processors.metastorage.DistributedMetaStorage;
 import org.apache.ignite.internal.util.typedef.internal.CU;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Read-only snapshot of the cluster state taken on a server node.
@@ -100,6 +101,12 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     /** Nodes that are already being stopped gracefully and are therefore excluded from {@link #nodes}. */
     private final List<UUID> gracefulShutdownNodes;
 
+    /**
+     * Names of the cache groups that were excluded from the snapshot as groups without backups, ordered by name;
+     * empty when the exclusion was not requested or no group matched.
+     */
+    private final List<String> excludedNoBackupGroups;
+
     /** Whether the actual partition owners can be read. */
     private final boolean ownersAvailable;
 
@@ -119,7 +126,17 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
      * @param ignite Ignite instance to take the snapshot from.
      */
     public SafeToStopSetsContextImpl(IgniteEx ignite) {
-        this(ignite, collect(ignite));
+        this(ignite, (SafeToStopSetsNoBackupMode)null);
+    }
+
+    /**
+     * @param ignite Ignite instance to take the snapshot from.
+     * @param noBackupMode What to do with the cache groups that have no backups, {@code null} to keep them: the
+     *      excluded groups leave the snapshot entirely, so neither the strategies nor the verification see
+     *      them.
+     */
+    public SafeToStopSetsContextImpl(IgniteEx ignite, @Nullable SafeToStopSetsNoBackupMode noBackupMode) {
+        this(ignite, collect(ignite, noBackupMode));
     }
 
     /**
@@ -137,6 +154,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
         this.affinityNodes = snap.affinityNodes;
         this.structureOnlyBlockers = snap.structureOnlyBlockers;
         this.gracefulShutdownNodes = snap.gracefulShutdownNodes;
+        this.excludedNoBackupGroups = snap.excludedNoBackupGroups;
         this.ownersAvailable = snap.ownersAvailable;
         this.reasons = new ArrayList<>(snap.reasons);
         this.notReady = !snap.ownersAvailable;
@@ -280,6 +298,15 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     }
 
     /**
+     * @return Names of the cache groups that were excluded from the snapshot as groups without backups, ordered
+     *      by name; empty when the exclusion was not requested or no group matched. The answer does not cover
+     *      these groups: their partitions are not read and are not part of {@link #partitionOwners()}.
+     */
+    public List<String> excludedNoBackupGroups() {
+        return excludedNoBackupGroups;
+    }
+
+    /**
      * @return Reasons why the snapshot is not usable, with the coordinates of the affected groups; empty if the
      *      snapshot is usable.
      */
@@ -383,9 +410,10 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
      * unusable instead of throwing: the caller decides how to report the reasons.
      *
      * @param ignite Ignite instance.
+     * @param noBackupMode What to do with the cache groups that have no backups, {@code null} to keep them.
      * @return Collected data, possibly marked as not ready.
      */
-    private static Snapshot collect(IgniteEx ignite) {
+    private static Snapshot collect(IgniteEx ignite, @Nullable SafeToStopSetsNoBackupMode noBackupMode) {
         Snapshot snap = new Snapshot();
 
         AffinityTopologyVersion startTopVer = null;
@@ -485,6 +513,27 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
         }
 
         grps.sort(Comparator.comparing(CacheGroupContext::cacheOrGroupName));
+
+        // A group without backups gives every partition a single copy, so it forbids stopping any node together
+        // with another one. The operator may exclude such groups from the snapshot: they then leave the whole
+        // computation (the copies, the size bound, the configuration checks), and only the list of their names
+        // is kept for the output.
+        List<String> excludedNoBackupGrps = new ArrayList<>();
+
+        if (noBackupMode != null) {
+            List<CacheGroupContext> kept = new ArrayList<>(grps.size());
+
+            for (CacheGroupContext grp : grps) {
+                if (grp.config().getBackups() == 0)
+                    excludedNoBackupGrps.add(grp.cacheOrGroupName());
+                else
+                    kept.add(grp);
+            }
+
+            grps = kept;
+        }
+
+        snap.excludedNoBackupGroups = Collections.unmodifiableList(excludedNoBackupGrps);
 
         Map<String, CacheGroupInfo> infos = new LinkedHashMap<>();
         Map<Integer, AffinityAssignment> affs = new HashMap<>();
@@ -689,6 +738,9 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
         /** Nodes that are already being stopped gracefully. */
         private List<UUID> gracefulShutdownNodes = Collections.emptyList();
+
+        /** Names of the cache groups excluded from the snapshot as groups without backups. */
+        private List<String> excludedNoBackupGroups = Collections.emptyList();
 
         /** Whether the actual partition owners can be read. */
         private boolean ownersAvailable;

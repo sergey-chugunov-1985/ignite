@@ -48,17 +48,6 @@ public interface SafeToStopSetsStrategy {
     }
 
     /**
-     * Version of the implementation, printed in the command output. Diagnostics only: the core never compares
-     * versions across nodes, because classpath uniformity is a cluster requirement, not something this command
-     * controls.
-     *
-     * @return Version string, {@code n/a} if the implementation does not report one.
-     */
-    default String version() {
-        return "n/a";
-    }
-
-    /**
      * Called only when the snapshot is usable: {@code ctx.partitionOwnersAvailable()} is true. The result is
      * meaningful only if {@code ctx.topologyStable()} still holds afterwards; the task checks this and fails
      * with a computation error instead of printing groups.

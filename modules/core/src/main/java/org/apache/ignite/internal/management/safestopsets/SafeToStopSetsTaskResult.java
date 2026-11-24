@@ -67,17 +67,20 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
     @Order(5)
     String strategyName;
 
-    /** Version of the strategy implementation, {@code n/a} if it does not report one. */
-    @Order(6)
-    String strategyVersion;
-
     /** Fully qualified class name of the strategy implementation. */
-    @Order(7)
+    @Order(6)
     String strategyClass;
 
     /** Nodes planned to stop gracefully (the kill set); excluded from {@link #nodes} and the groups. */
-    @Order(8)
+    @Order(7)
     List<UUID> gracefulShutdownNodes;
+
+    /**
+     * Cache groups excluded from the computation as groups without backups, ordered by name; empty when the
+     * exclusion was not requested or no group matched. The answer does not cover these groups.
+     */
+    @Order(8)
+    List<String> excludedNoBackupGroups;
 
     /**
      * For externalization only.
@@ -101,9 +104,9 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
      * @param mode What the verification checked.
      * @param notVerified Reasons why the result is structure-only; empty for {@code exact}.
      * @param strategyName Name of the strategy that produced the groups.
-     * @param strategyVersion Version of the strategy implementation.
      * @param strategyClass Fully qualified class name of the strategy implementation.
      * @param gracefulShutdownNodes Nodes planned to stop gracefully.
+     * @param excludedNoBackupGroups Cache groups excluded from the computation as groups without backups.
      */
     public SafeToStopSetsTaskResult(
         List<SafeToStopSetsNodeInfo> nodes,
@@ -112,9 +115,9 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
         String mode,
         List<String> notVerified,
         String strategyName,
-        String strategyVersion,
         String strategyClass,
-        List<UUID> gracefulShutdownNodes
+        List<UUID> gracefulShutdownNodes,
+        List<String> excludedNoBackupGroups
     ) {
         this.nodes = nodes;
         this.topVer = topVer;
@@ -122,9 +125,9 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
         this.mode = mode;
         this.notVerified = notVerified;
         this.strategyName = strategyName;
-        this.strategyVersion = strategyVersion;
         this.strategyClass = strategyClass;
         this.gracefulShutdownNodes = gracefulShutdownNodes;
+        this.excludedNoBackupGroups = excludedNoBackupGroups;
     }
 
     /** @return Server nodes of the snapshot, ordered by consistent id. */
@@ -157,11 +160,6 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
         return strategyName;
     }
 
-    /** @return Version of the strategy implementation. */
-    public String strategyVersion() {
-        return strategyVersion;
-    }
-
     /** @return Fully qualified class name of the strategy implementation. */
     public String strategyClass() {
         return strategyClass;
@@ -170,6 +168,11 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
     /** @return Nodes planned to stop gracefully. */
     public List<UUID> gracefulShutdownNodes() {
         return gracefulShutdownNodes;
+    }
+
+    /** @return Cache groups excluded from the computation as groups without backups, ordered by name. */
+    public List<String> excludedNoBackupGroups() {
+        return excludedNoBackupGroups;
     }
 
     /** {@inheritDoc} */

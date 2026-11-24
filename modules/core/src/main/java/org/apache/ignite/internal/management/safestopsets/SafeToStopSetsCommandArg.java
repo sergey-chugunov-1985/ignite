@@ -20,7 +20,9 @@ package org.apache.ignite.internal.management.safestopsets;
 import org.apache.ignite.internal.Order;
 import org.apache.ignite.internal.dto.IgniteDataTransferObject;
 import org.apache.ignite.internal.management.api.Argument;
+import org.apache.ignite.internal.management.api.EnumDescription;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Argument of {@link SafeToStopSetsCommand}.
@@ -36,6 +38,26 @@ public class SafeToStopSetsCommandArg extends IgniteDataTransferObject {
         "'backups-count' is used by default")
     String strategy;
 
+    /**
+     * What to do with the cache groups that have no backups, {@code null} when the groups must stay in the
+     * computation.
+     */
+    @Order(1)
+    @Argument(example = "ignore|warning", optional = true,
+        description = "What to do with the caches that have no backups: 'ignore' excludes them from the "
+            + "computation, 'warning' excludes them and prints the list")
+    @EnumDescription(
+        names = {
+            "IGNORE",
+            "WARNING"
+        },
+        descriptions = {
+            "Exclude the caches without backups from the computation without mentioning them",
+            "Exclude the caches without backups from the computation and print them as a separate list"
+        }
+    )
+    SafeToStopSetsNoBackupMode noBackup;
+
     /** @return Name of the strategy. */
     public String strategy() {
         return strategy;
@@ -44,6 +66,16 @@ public class SafeToStopSetsCommandArg extends IgniteDataTransferObject {
     /** @param strategy Name of the strategy. */
     public void strategy(String strategy) {
         this.strategy = strategy;
+    }
+
+    /** @return What to do with the cache groups that have no backups, {@code null} to keep them. */
+    public @Nullable SafeToStopSetsNoBackupMode noBackup() {
+        return noBackup;
+    }
+
+    /** @param noBackup What to do with the cache groups that have no backups, {@code null} to keep them. */
+    public void noBackup(@Nullable SafeToStopSetsNoBackupMode noBackup) {
+        this.noBackup = noBackup;
     }
 
     /** {@inheritDoc} */

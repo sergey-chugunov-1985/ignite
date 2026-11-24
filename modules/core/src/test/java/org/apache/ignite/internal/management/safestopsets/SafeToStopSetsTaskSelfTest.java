@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.configuration.CacheConfiguration;
 import org.apache.ignite.configuration.IgniteConfiguration;
@@ -44,6 +45,9 @@ import static org.junit.Assert.fail;
 public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
     /** Test cache name. */
     private static final String CACHE_NAME = "safe-to-stop-sets-task-cache";
+
+    /** Test cache name of the group without backups. */
+    private static final String NO_BACKUP_CACHE_NAME = "safe-to-stop-sets-task-no-backup-cache";
 
     /** {@inheritDoc} */
     @Override protected IgniteConfiguration getConfiguration(String igniteInstanceName) throws Exception {
@@ -144,6 +148,92 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
     }
 
     /**
+     * A cache group without backups forbids stopping any two nodes together, so without the exclusion the
+     * cluster is rejected as having no safe group; with the exclusion the answer covers the remaining groups,
+     * and its report names the excluded ones.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testNoBackupCacheIsExcludedOnRequest() throws Exception {
+        startGridsMultiThreaded(4);
+
+        createCache(2);
+
+        grid(0).createCache(new CacheConfiguration<>(NO_BACKUP_CACHE_NAME)
+            .setCacheMode(PARTITIONED)
+            .setBackups(0)
+            .setPartitionLossPolicy(READ_WRITE_SAFE)
+            .setAffinity(new RendezvousAffinityFunction(false, 32)));
+
+        awaitPartitionMapExchange();
+
+        try {
+            executeTask();
+
+            fail("A cache without backups must forbid every group of more than one node");
+        }
+        catch (Exception e) {
+            assertTrue("Expected IAE in cause chain: " + e, X.hasCause(e, IllegalArgumentException.class));
+            assertTrue(X.cause(e, IllegalArgumentException.class).getMessage().contains("No safe group"));
+        }
+
+        for (SafeToStopSetsNoBackupMode mode : SafeToStopSetsNoBackupMode.values()) {
+            SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
+
+            arg.noBackup(mode);
+
+            SafeToStopSetsTaskResult res = executeTask(arg);
+
+            assertEquals(Collections.singletonList(NO_BACKUP_CACHE_NAME), res.excludedNoBackupGroups());
+            assertTrue("The remaining groups allow a pair: " + res.groups(),
+                res.groups().stream().anyMatch(grp -> grp.size() > 1));
+
+            // The remaining group has backups = 2 among 4 nodes, so a group of two is the largest safe one.
+            for (List<UUID> grp : res.groups())
+                assertTrue("Groups are bounded by the remaining group's copy bound: " + grp, grp.size() <= 2);
+        }
+    }
+
+    /**
+     * When every cache group is excluded, there is no layout left to protect: the task fails closed instead of
+     * printing the whole cluster as one group.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testAllGroupsExcludedFailsClosed() throws Exception {
+        startGridsMultiThreaded(3);
+
+        grid(0).createCache(new CacheConfiguration<>(NO_BACKUP_CACHE_NAME)
+            .setCacheMode(PARTITIONED)
+            .setBackups(0)
+            .setPartitionLossPolicy(READ_WRITE_SAFE)
+            .setAffinity(new RendezvousAffinityFunction(false, 32)));
+
+        awaitPartitionMapExchange();
+
+        SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
+
+        arg.noBackup(SafeToStopSetsNoBackupMode.IGNORE);
+
+        try {
+            executeTask(arg);
+
+            fail("Expected an operator rejection");
+        }
+        catch (Exception e) {
+            assertTrue("Expected IAE in cause chain: " + e, X.hasCause(e, IllegalArgumentException.class));
+
+            String msg = X.cause(e, IllegalArgumentException.class).getMessage();
+
+            assertTrue(msg, msg.contains("Nothing to compute"));
+            assertTrue(msg, msg.contains(NO_BACKUP_CACHE_NAME));
+            assertTrue(msg, msg.contains("without --no-backup"));
+        }
+    }
+
+    /**
      * @param backups Number of backups for the test cache.
      */
     private void createCache(int backups) {
@@ -151,7 +241,7 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
             .setCacheMode(PARTITIONED)
             .setBackups(backups)
             .setPartitionLossPolicy(READ_WRITE_SAFE)
-            .setAffinity(new org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction(false, 32)));
+            .setAffinity(new RendezvousAffinityFunction(false, 32)));
     }
 
     /**
@@ -161,10 +251,21 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
      * @throws Exception If failed.
      */
     private SafeToStopSetsTaskResult executeTask() throws Exception {
+        return executeTask(new SafeToStopSetsCommandArg());
+    }
+
+    /**
+     * Invokes the task on the coordinator only (the behavior of the command since 6.1).
+     *
+     * @param arg Task argument.
+     * @return The task result.
+     * @throws Exception If failed.
+     */
+    private SafeToStopSetsTaskResult executeTask(SafeToStopSetsCommandArg arg) throws Exception {
         ClusterNode coordinator = grid(0).cluster().localNode();
 
         Collection<ClusterNode> nodes = Collections.singleton(coordinator);
 
-        return CommandUtils.execute(null, grid(0), SafeToStopSetsTask.class, new SafeToStopSetsCommandArg(), nodes);
+        return CommandUtils.execute(null, grid(0), SafeToStopSetsTask.class, arg, nodes);
     }
 }

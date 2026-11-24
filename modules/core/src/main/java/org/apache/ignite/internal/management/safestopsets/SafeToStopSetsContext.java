@@ -70,6 +70,10 @@ public interface SafeToStopSetsContext {
     /**
      * Cache group configurations of the snapshot, ordered by group name. This is the cheapest input: no
      * partition data is needed to build it.
+     * <p>
+     * The mapping holds the groups in scope of the answer only: a group the operator excluded from the
+     * computation (a group without backups under {@code --no-backup}) is absent here and in every other view of
+     * the snapshot, so a strategy never has to know about the exclusion.
      *
      * @return Cache group name to configuration mapping.
      */

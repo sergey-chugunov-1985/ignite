@@ -77,8 +77,7 @@ public class SafeToStopSetsCommand implements ComputeCommand<SafeToStopSetsComma
     /** {@inheritDoc} */
     @Override public void printResult(SafeToStopSetsCommandArg arg, SafeToStopSetsTaskResult res, Consumer<String> printer) {
         printer.accept("Topology version: " + res.topVer());
-        printer.accept("Strategy: " + res.strategyName()
-            + " [version=" + res.strategyVersion() + ", class=" + res.strategyClass() + "]");
+        printer.accept("Strategy: " + res.strategyName() + " [class=" + res.strategyClass() + "]");
 
         if (SafeToStopSetsVerification.Mode.EXACT.name().equals(res.mode()))
             printer.accept("Verified: exact");
@@ -87,6 +86,13 @@ public class SafeToStopSetsCommand implements ComputeCommand<SafeToStopSetsComma
 
             for (String reason : res.notVerified())
                 printer.accept("  Reason: " + reason);
+        }
+
+        if (arg.noBackup() == SafeToStopSetsNoBackupMode.WARNING && !res.excludedNoBackupGroups().isEmpty()) {
+            printer.accept("Caches without backups (excluded from the computation, the answer does not cover them):");
+
+            for (String grpName : res.excludedNoBackupGroups())
+                printer.accept("  " + grpName);
         }
 
         Map<UUID, String> consistentId = new HashMap<>();
