@@ -56,10 +56,16 @@ public final class SafeToStopSetsSupport {
     }
 
     /**
-     * Greedy construction of the maximal safe sets, in the given node order. The result is always safe: a
-     * node is added to a group only when the group contains no edge (owner set) in its entirety after the
-     * addition. The order of the nodes affects the quality of the packing (group sizes, number of
-     * singletons), never the safety.
+     * Greedy construction of the maximal safe sets, in the given node order. A node is added to a group only
+     * when the group contains no edge (owner set) in its entirety after the addition, so the pass never makes
+     * a group of more than one node unsafe. The order of the nodes affects the quality of the packing (group
+     * sizes, number of singletons), never the safety.
+     * <p>
+     * The only group that may hold an edge is a group of one node whose owner set is that node alone: such a
+     * node cannot be stopped together with any other one, so its group is opened and immediately closed, and
+     * no node is ever added to it. Closing the group is what keeps the invariant the packing relies on: the
+     * node gets an empty set of requirements (the edge minus the node itself), which reads as "fits
+     * everywhere", and only the closed flag stops the next node from joining it.
      * <p>
      * A node is added to the smallest group it fits; when no existing group fits, a new group is opened.
      * The groups are returned in creation order, the node IDs inside a group in processing order.
@@ -67,7 +73,8 @@ public final class SafeToStopSetsSupport {
      * @param hg Owner hypergraph.
      * @param order Nodes to split, in the order the strategy wants them processed.
      * @param maxGroupSize Maximum size of a group, at least {@code 1}; groups are never larger.
-     * @return Partition of the nodes into safe groups, each of size no more than {@code maxGroupSize}.
+     * @return Partition of the nodes into groups, each of size no more than {@code maxGroupSize}; every group
+     *      of more than one node is safe.
      * @throws IllegalArgumentException If {@code maxGroupSize} is less than {@code 1}.
      */
     public static List<List<UUID>> greedy(
@@ -79,13 +86,16 @@ public final class SafeToStopSetsSupport {
             throw new IllegalArgumentException("maxGroupSize must be >= 1, got " + maxGroupSize);
 
         List<BitSet> requireds = new ArrayList<>();
-        List<List<Integer>> groups = new ArrayList<>();
+        List<List<Integer>> grps = new ArrayList<>();
         List<BitSet> groupBits = new ArrayList<>();
+        BitSet closed = new BitSet();
 
         for (ClusterNode node : order) {
             int idx = hg.indexOf(node.id());
 
             requireds.clear();
+
+            boolean alone = false;
 
             for (BitSet edge : hg.edges()) {
                 if (!edge.get(idx))
@@ -95,13 +105,15 @@ public final class SafeToStopSetsSupport {
 
                 required.clear(idx);
                 requireds.add(required);
+
+                alone |= required.isEmpty();
             }
 
             int best = -1;
             int bestSize = Integer.MAX_VALUE;
 
-            for (int i = 0; i < groups.size(); i++) {
-                if (groupBits.get(i).cardinality() >= maxGroupSize)
+            for (int i = 0; i < grps.size(); i++) {
+                if (closed.get(i) || groupBits.get(i).cardinality() >= maxGroupSize)
                     continue;
 
                 if (conflicts(requireds, groupBits.get(i)))
@@ -121,18 +133,21 @@ public final class SafeToStopSetsSupport {
 
                 bits.set(idx);
                 groupBits.add(bits);
-                groups.add(new ArrayList<>());
+                grps.add(new ArrayList<>());
+
+                if (alone)
+                    closed.set(grps.size() - 1);
             }
 
-            groups.get(best >= 0 ? best : groups.size() - 1).add(idx);
+            grps.get(best >= 0 ? best : grps.size() - 1).add(idx);
         }
 
-        List<List<UUID>> res = new ArrayList<>(groups.size());
+        List<List<UUID>> res = new ArrayList<>(grps.size());
 
-        for (List<Integer> group : groups) {
-            List<UUID> ids = new ArrayList<>(group.size());
+        for (List<Integer> grp : grps) {
+            List<UUID> ids = new ArrayList<>(grp.size());
 
-            for (int idx : group)
+            for (int idx : grp)
                 ids.add(hg.nodes().get(idx).id());
 
             res.add(ids);

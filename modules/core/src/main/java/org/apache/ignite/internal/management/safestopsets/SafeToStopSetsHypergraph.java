@@ -19,6 +19,7 @@ package org.apache.ignite.internal.management.safestopsets;
 
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,16 +30,21 @@ import java.util.UUID;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteExperimental;
+import org.jetbrains.annotations.Nullable;
 
 /**
- * Hypergraph of the partition owner sets of a snapshot, the source of the safety constraint: a group is safe
- * when it does not contain any edge (owner set) in its entirety.
+ * Hypergraph of the safety constraints of a snapshot: a group of nodes is safe when it does not contain any
+ * edge in its entirety, an edge being a set of nodes that may not be stopped all at once. The default edge set
+ * is the partition owner sets {@code H(c, p)} of the snapshot, see {@link #of(SafeToStopSetsContext)}; a
+ * strategy whose own constraint is expressed by another set of edges on the same nodes builds the hypergraph
+ * with {@link #of(List, Collection)}.
  * <p>
- * An edge is a {@link BitSet} over the snapshot nodes, in the order of {@link #nodes()}. Duplicate owner sets
- * are collapsed into a single edge, and every edge that strictly contains another edge is dropped: the
- * constraint of the smaller edge implies the constraint of the larger one, so the larger one is redundant.
+ * An edge is a {@link BitSet} over the snapshot nodes, in the order of {@link #nodes()}. Duplicate edges are
+ * collapsed into a single edge, and every edge that strictly contains another edge is dropped: the constraint
+ * of the smaller edge implies the constraint of the larger one, so the larger one is redundant.
  * <p>
- * The class is deterministic: the same snapshot always produces the same edge list, byte for byte.
+ * The class is deterministic: the same nodes and the same set of edges always produce the same edge list, byte
+ * for byte, regardless of the iteration order of the input.
  */
 @IgniteExperimental
 public final class SafeToStopSetsHypergraph {
@@ -98,8 +104,63 @@ public final class SafeToStopSetsHypergraph {
      *      it less restrictive, so both must fail.
      */
     public static SafeToStopSetsHypergraph of(SafeToStopSetsContext ctx) {
-        List<ClusterNode> nodes = ctx.nodes();
+        List<PartitionOwners> owned = ctx.partitionOwners();
 
+        List<List<UUID>> edges = new ArrayList<>(owned.size());
+        List<String> origins = new ArrayList<>(owned.size());
+
+        for (PartitionOwners owners : owned) {
+            edges.add(owners.owners());
+
+            origins.add("[" + owners.cacheGroupName() + '/' + owners.partition() + ']');
+        }
+
+        return of(ctx.nodes(), edges, origins);
+    }
+
+    /**
+     * Builds the hypergraph from an arbitrary set of edges over the snapshot nodes, normalized exactly as
+     * {@link #of(SafeToStopSetsContext)} does: duplicates collapsed, dominated edges dropped, the rest sorted by
+     * size and then by bits.
+     * <p>
+     * This is the extension point for a strategy whose safety constraint is another set of edges on the same
+     * nodes, for example the copies of a partition inside a single data center. The edges are the responsibility
+     * of the strategy: the class only guarantees that the group-wise constraint ("no edge is contained in a
+     * group") is normalized and checked in one place. An edge weaker than an owner set {@code H(c, p)} of the
+     * snapshot does not prove the default invariant, so a strategy that feeds the result to
+     * {@link SafeToStopSetsSupport#greedy} must build its edges as a partition of every owner set into non-empty
+     * parts (plus whatever additional edges its own domain requires), see
+     * {@link AbstractSafeToStopSetsStrategy#hypergraph(SafeToStopSetsContext)}.
+     *
+     * @param nodes Snapshot nodes, an edge is a set of IDs of these nodes.
+     * @param edges Edges over {@code nodes}: each edge is a set of nodes that may not be stopped all at once.
+     * @return Hypergraph of the edges, deduplicated, undominated and sorted.
+     * @throws IllegalStateException If an edge references a node that is not in {@code nodes}, or an edge is
+     *      empty: both are contract violations of the caller, and a silently shrunken edge would make the answer
+     *      more restrictive than intended, while a silently dropped node would make it less restrictive, so both
+     *      must fail.
+     */
+    public static SafeToStopSetsHypergraph of(List<ClusterNode> nodes, Collection<List<UUID>> edges) {
+        return of(nodes, edges, null);
+    }
+
+    /**
+     * Normalizes an edge set and builds the hypergraph: the single place where deduplication, dominated removal
+     * and sorting live, shared by {@link #of(SafeToStopSetsContext)} and {@link #of(List, Collection)}.
+     *
+     * @param nodes Snapshot nodes, an edge is a set of IDs of these nodes.
+     * @param edges Edges over {@code nodes}.
+     * @param origins Per-edge coordinates for the failure messages, in the order of {@code edges}, {@code null}
+     *      when the edges do not come from the partitions of the snapshot and the index is used instead.
+     * @return Hypergraph of the edges, deduplicated, undominated and sorted.
+     * @throws IllegalStateException If an edge references a node that is not in {@code nodes}, or an edge is
+     *      empty.
+     */
+    private static SafeToStopSetsHypergraph of(
+        List<ClusterNode> nodes,
+        Collection<List<UUID>> edges,
+        @Nullable List<String> origins
+    ) {
         Map<UUID, Integer> index = new HashMap<>(nodes.size() * 2);
 
         for (int i = 0; i < nodes.size(); i++)
@@ -107,28 +168,26 @@ public final class SafeToStopSetsHypergraph {
 
         Set<BitSet> distinct = new HashSet<>();
 
-        for (PartitionOwners owners : ctx.partitionOwners()) {
+        int edgeIdx = 0;
+
+        for (List<UUID> nodeIds : edges) {
             BitSet edge = new BitSet(nodes.size());
 
-            for (UUID owner : owners.owners()) {
-                Integer idx = index.get(owner);
+            for (UUID nodeId : nodeIds) {
+                Integer idx = index.get(nodeId);
 
                 if (idx == null)
-                    throw new IllegalStateException(
-                        "Owner is not a snapshot node: partition ["
-                            + owners.cacheGroupName() + '/' + owners.partition() + "], owner [" + owner + "], nodes "
-                            + "of the snapshot are the restricted owner sets, this is a snapshot contract violation.");
+                    throw new IllegalStateException(foreignNodeMsg(origins, nodeId, edgeIdx));
 
                 edge.set(idx);
             }
 
             if (edge.isEmpty())
-                throw new IllegalStateException(
-                    "Partition has no owner left among the snapshot nodes: ["
-                        + owners.cacheGroupName() + '/' + owners.partition() + "]; the snapshot must refuse to "
-                        + "produce such a partition.");
+                throw new IllegalStateException(emptyEdgeMsg(origins, edgeIdx));
 
             distinct.add(edge);
+
+            edgeIdx++;
         }
 
         List<BitSet> sorted = new ArrayList<>(distinct);
@@ -153,6 +212,37 @@ public final class SafeToStopSetsHypergraph {
         }
 
         return new SafeToStopSetsHypergraph(nodes, res);
+    }
+
+    /**
+     * @param origins Per-edge coordinates of the snapshot partitions, {@code null} for arbitrary edges.
+     * @param nodeId Node of an edge that is not in the node list.
+     * @param edgeIdx Index of the edge in the input.
+     * @return Message of the fail-fast on a node that is not in the node list.
+     */
+    private static String foreignNodeMsg(@Nullable List<String> origins, UUID nodeId, int edgeIdx) {
+        if (origins == null) {
+            return "Node of an edge is not a snapshot node: edge #" + edgeIdx + ", node [" + nodeId + "], the edges "
+                + "must be built over the nodes of the snapshot, this is a contract violation.";
+        }
+
+        return "Owner is not a snapshot node: partition " + origins.get(edgeIdx) + ", owner [" + nodeId + "], nodes "
+            + "of the snapshot are the restricted owner sets, this is a snapshot contract violation.";
+    }
+
+    /**
+     * @param origins Per-edge coordinates of the snapshot partitions, {@code null} for arbitrary edges.
+     * @param edgeIdx Index of the edge in the input.
+     * @return Message of the fail-fast on an empty edge.
+     */
+    private static String emptyEdgeMsg(@Nullable List<String> origins, int edgeIdx) {
+        if (origins == null) {
+            return "Edge #" + edgeIdx + " is empty: an empty edge is contained in any group, so no group would be "
+                + "safe, this is a contract violation.";
+        }
+
+        return "Partition has no owner left among the snapshot nodes: " + origins.get(edgeIdx) + "; the snapshot "
+            + "must refuse to produce such a partition.";
     }
 
     /**

@@ -1,1 +1,2 @@
 org.apache.ignite.internal.management.safestopsets.TestOwnersSafeToStopSetsStrategy
+org.apache.ignite.internal.management.safestopsets.TestDomainResilienceSafeToStopSetsStrategy

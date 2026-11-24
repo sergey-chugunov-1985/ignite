@@ -25,8 +25,9 @@ import org.apache.ignite.lang.IgniteExperimental;
 /**
  * Base class for strategies that always read the partition owners and build the answer from the actual
  * layout using the common engine (hypergraph, greedy, repair). The {@link #split(SafeToStopSetsContext)}
- * method is final: it orchestrates the engine and the subclasses only control the node order, the maximum
- * group size, and whether the local search is enabled.
+ * method is final: it orchestrates the engine and the subclasses only control the source of the safety
+ * constraint ({@link #hypergraph(SafeToStopSetsContext)}), the node order, the maximum group size, and
+ * whether the local search is enabled.
  * <p>
  * A strategy that does not fit this shape (for example, the configuration-only {@code backups-count} on
  * its fast path) implements {@link SafeToStopSetsStrategy} directly.
@@ -45,7 +46,7 @@ public abstract class AbstractSafeToStopSetsStrategy implements SafeToStopSetsSt
     public final List<List<UUID>> split(SafeToStopSetsContext ctx) {
         ctx.partitionOwners();
 
-        SafeToStopSetsHypergraph hg = SafeToStopSetsSupport.hypergraph(ctx);
+        SafeToStopSetsHypergraph hg = hypergraph(ctx);
 
         List<ClusterNode> order = orderNodes(ctx);
 
@@ -60,6 +61,42 @@ public abstract class AbstractSafeToStopSetsStrategy implements SafeToStopSetsSt
             result = SafeToStopSetsSupport.repair(result, hg, order, maxGroupSize);
 
         return result;
+    }
+
+    /**
+     * Builds the hypergraph the greedy pass and the local search work with: the source of the safety constraint
+     * of the strategy. The default is the owner hypergraph of the snapshot
+     * ({@link SafeToStopSetsSupport#hypergraph(SafeToStopSetsContext)}), that is the constraint "no partition
+     * loses its last copy".
+     * <p>
+     * A strategy with a stronger domain constraint, expressed by another set of edges over the same nodes (for
+     * example, the copies of a partition inside a single data center), overrides this method and builds the
+     * hypergraph with {@link SafeToStopSetsHypergraph#of(java.util.List, java.util.Collection)}. The contract of
+     * an override:
+     * <ol>
+     * <li>the result must be a deterministic function of {@code ctx}: the answer is reproducible on any node of
+     * the cluster, byte for byte;</li>
+     * <li>the method is called after the owners are materialized: {@link #split} reads them first, so
+     * {@link SafeToStopSetsContext#ownersRead()} is already {@code true}, and the edges may be derived from
+     * {@link SafeToStopSetsContext#partitionOwners()};</li>
+     * <li>the <b>coverage contract</b>: every owner set {@code H(c, p)} of the snapshot must be covered by a
+     * non-empty edge of the result, that is the edges are built as a partition of each {@code H(c, p)} into
+     * non-empty parts (for example, its intersections with the data centers), plus the additional edges the
+     * domain requires. Edges weaker than the owner sets (a superset of an owner set with none of its parts) are
+     * forbidden: such an answer loses the last copy of a partition.</li>
+     * </ol>
+     * <p>
+     * The core verifies only the default invariant "no group contains an owner set". Thanks to the coverage
+     * contract that check is a fail-closed guard for an override too: an answer that keeps every edge of the
+     * result out of every group also keeps every owner set out of every group. The domain constraint itself is
+     * <em>not</em> verified by the core, because it is not expressed by
+     * {@link SafeToStopSetsContext#partitionOwners()}: its correctness is the responsibility of the strategy.
+     *
+     * @param ctx Snapshot of the cluster state.
+     * @return Hypergraph of the safety constraint of the strategy, see the coverage contract above.
+     */
+    protected SafeToStopSetsHypergraph hypergraph(SafeToStopSetsContext ctx) {
+        return SafeToStopSetsSupport.hypergraph(ctx);
     }
 
     /**

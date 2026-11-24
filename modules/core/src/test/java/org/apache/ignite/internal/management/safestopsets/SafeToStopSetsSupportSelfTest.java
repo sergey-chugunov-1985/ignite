@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.PartitionLossPolicy;
+import org.apache.ignite.cluster.ClusterNode;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -143,6 +144,82 @@ public class SafeToStopSetsSupportSelfTest {
 
         assertTrue(ver.valid());
         assertEquals(SafeToStopSetsVerification.Mode.EXACT, ver.mode());
+    }
+
+    /**
+     * A partition with a single copy left ({@code H(p) = {A}}) forbids A from being stopped together with
+     * anyone: the node must be a singleton and the remaining nodes must still be packed together.
+     * <p>
+     * The regression this test guards: {@code requireds} is collected only from the edges that contain the
+     * candidate node, so for {@code H(p) = {A}} the set is empty, {@code conflicts} finds no conflict and
+     * every following node joins the group of A. The edge {@code {A}} is then contained in a group of size
+     * 2, which the verification rejects with {@code UNPROVABLE}: the engine produces an answer it has to
+     * fail.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testGreedySingleOwnerEdgeIsSingleton() throws Exception {
+        List<UUID> nodes = ids(4);
+
+        // The only copy of the partition is on A.
+        TestSafeToStopSetsContext ctx = ctx(nodes, ownersFor(nodes, new int[][] {{0}}));
+        SafeToStopSetsHypergraph hg = SafeToStopSetsSupport.hypergraph(ctx);
+
+        assertEquals(1, hg.edgeCount());
+        assertEquals("A single-owner partition is an edge of size 1", 1, hg.minEdgeSize());
+
+        List<List<UUID>> res = SafeToStopSetsSupport.greedy(hg, ctx.nodes(), 3);
+
+        assertExactPartition(res, nodes);
+        assertEquals(2, res.size());
+        assertEquals("The node that holds the only copy must stay alone", 1, grpOf(res, nodes.get(0)).size());
+        assertEquals("The remaining nodes must still be packed together", 3, grpOf(res, nodes.get(1)).size());
+
+        SafeToStopSetsVerification ver = SafeToStopSetsSupport.verify(res, ctx);
+
+        assertTrue("greedy must never return a group the verification rejects: " + ver.violations(),
+            ver.valid());
+        assertEquals(SafeToStopSetsVerification.Mode.EXACT, ver.mode());
+
+        // The local search must not merge the node into a group either: it already checks the full edge set.
+        List<List<UUID>> rep = SafeToStopSetsSupport.repair(res, hg, ctx.nodes(), 3);
+
+        assertExactPartition(rep, nodes);
+        assertEquals("repair must keep the node alone", 1, grpOf(rep, nodes.get(0)).size());
+    }
+
+    /**
+     * The single-owner case must not depend on the node order. With the forward order the nodes used to be
+     * merged into the group of the node that holds the only copy; with the reverse order they were not, so
+     * the answer depended on the order and one of the two answers was rejected by the verification.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testGreedySingleOwnerEdgeIsOrderIndependent() throws Exception {
+        List<UUID> nodes = ids(4);
+
+        // {A} — the only copy is on A; {A,B} — two copies, so A also conflicts with B.
+        TestSafeToStopSetsContext ctx = ctx(nodes, ownersFor(nodes, new int[][] {{0}, {0, 1}}));
+        SafeToStopSetsHypergraph hg = SafeToStopSetsSupport.hypergraph(ctx);
+
+        List<ClusterNode> order = ctx.nodes();
+        List<ClusterNode> reversedOrder = new ArrayList<>(order);
+
+        Collections.reverse(reversedOrder);
+
+        for (List<ClusterNode> ord : Arrays.asList(order, reversedOrder)) {
+            List<List<UUID>> res = SafeToStopSetsSupport.greedy(hg, ord, 3);
+
+            assertExactPartition(res, nodes);
+            assertEquals("A must stay alone in any order", 1, grpOf(res, nodes.get(0)).size());
+
+            SafeToStopSetsVerification ver = SafeToStopSetsSupport.verify(res, ctx);
+
+            assertTrue("A group of the answer is unsafe: " + ver.violations(), ver.valid());
+            assertEquals(SafeToStopSetsVerification.Mode.EXACT, ver.mode());
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -563,6 +640,20 @@ public class SafeToStopSetsSupportSelfTest {
         groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, 1, PartitionLossPolicy.READ_WRITE_SAFE));
 
         return new TestSafeToStopSetsContext(nodes, groups, new LinkedHashMap<>(), owners);
+    }
+
+    /**
+     * @param res Groups of node IDs.
+     * @param id Node ID.
+     * @return The group that contains the node.
+     */
+    private static List<UUID> grpOf(List<List<UUID>> res, UUID id) {
+        for (List<UUID> grp : res) {
+            if (grp.contains(id))
+                return grp;
+        }
+
+        throw new AssertionError("Node [" + id + "] is not in any group: " + res);
     }
 
     /**

@@ -41,7 +41,7 @@ public interface SafeToStopSetsStrategy {
     String name();
 
     /**
-     * @return Human readable description used in diagnostics.
+     * @return Human-readable description used in diagnostics.
      */
     default String description() {
         return name();
