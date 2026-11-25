@@ -130,10 +130,10 @@ public class SafeToStopSetsTask
 
             SafeToStopSetsStrategy strategy = SafeToStopSetsStrategies.resolve(arg.strategy());
 
-            List<List<UUID>> groups;
+            List<List<UUID>> grps;
 
             try {
-                groups = strategy.split(ctx);
+                grps = strategy.split(ctx);
             }
             catch (RuntimeException e) {
                 // Reading the owners may reveal a partition that has no owner left (H(p) = ∅). That is the
@@ -144,7 +144,7 @@ public class SafeToStopSetsTask
                 throw e;
             }
 
-            SafeToStopSetsVerification verification = SafeToStopSetsSupport.verify(groups, ctx);
+            SafeToStopSetsVerification verification = SafeToStopSetsSupport.verify(grps, ctx);
 
             if (verification.failed())
                 throw new IllegalArgumentException("verification failed [" + verification.mode() + "]: "
@@ -157,7 +157,7 @@ public class SafeToStopSetsTask
                 throw new IllegalArgumentException("unstable: topology changed during computation: "
                     + start + " -> " + current + ", retry");
 
-            if (groups.stream().noneMatch(group -> group.size() > 1))
+            if (grps.stream().noneMatch(grp -> grp.size() > 1))
                 throw noSafeGroup(ctx);
 
             List<SafeToStopSetsNodeInfo> nodes = ctx.nodes().stream()
@@ -167,7 +167,7 @@ public class SafeToStopSetsTask
             return new SafeToStopSetsTaskResult(
                 nodes,
                 ctx.affinityTopologyVersion().topologyVersion(),
-                groups,
+                grps,
                 verification.mode().name(),
                 verification.notVerified(),
                 strategy.name(),

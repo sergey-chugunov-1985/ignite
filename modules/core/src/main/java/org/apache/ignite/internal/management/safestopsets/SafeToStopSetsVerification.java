@@ -19,6 +19,7 @@ package org.apache.ignite.internal.management.safestopsets;
 
 import java.util.Collections;
 import java.util.List;
+import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteExperimental;
 
 /**
@@ -58,7 +59,10 @@ public final class SafeToStopSetsVerification {
         UNPROVABLE
     }
 
+    /** Whether the group list is safe (or safe by construction) and may be printed. */
     private final boolean valid;
+
+    /** What the verification actually checked. */
     private final Mode mode;
 
     /** Human readable reasons for a failed or structure-only result; empty when {@link #valid} and mode is {@code EXACT}. */
@@ -122,11 +126,7 @@ public final class SafeToStopSetsVerification {
     }
 
     /** {@inheritDoc} */
-    @Override
-    public String toString() {
-        return "SafeToStopSetsVerification[valid=" + valid
-            + ", mode=" + mode
-            + ", violations=" + violations
-            + ", notVerified=" + notVerified + "]";
+    @Override public String toString() {
+        return S.toString(SafeToStopSetsVerification.class, this);
     }
 }

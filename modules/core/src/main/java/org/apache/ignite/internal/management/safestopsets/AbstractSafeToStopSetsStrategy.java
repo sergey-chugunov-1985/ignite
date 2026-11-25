@@ -42,8 +42,7 @@ public abstract class AbstractSafeToStopSetsStrategy implements SafeToStopSetsSt
      * @param ctx Snapshot of the cluster state.
      * @return Partition of the snapshot nodes into safe groups.
      */
-    @Override
-    public final List<List<UUID>> split(SafeToStopSetsContext ctx) {
+    @Override public final List<List<UUID>> split(SafeToStopSetsContext ctx) {
         ctx.partitionOwners();
 
         SafeToStopSetsHypergraph hg = hypergraph(ctx);

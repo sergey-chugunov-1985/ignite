@@ -63,6 +63,10 @@ public final class SafeToStopSetsHypergraph {
     /** Size of the largest edge, {@code 0} when there are no edges. */
     private final int maxEdgeSize;
 
+    /**
+     * @param nodes Snapshot nodes, ordered; an edge is a bit set over these indices.
+     * @param edges Deduplicated, undominated edges.
+     */
     private SafeToStopSetsHypergraph(List<ClusterNode> nodes, List<BitSet> edges) {
         this.nodes = nodes;
         this.edges = edges;
@@ -349,8 +353,15 @@ public final class SafeToStopSetsHypergraph {
         return 0;
     }
 
-    /** {@inheritDoc} */
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The edges themselves are not printed: one edge is a bit set over every snapshot node, so the full list
+     * would be tens of kilobytes on one log line. The sizes are what a reader needs to interpret the answer.
+     */
     @Override public String toString() {
-        return S.toString(SafeToStopSetsHypergraph.class, this);
+        return S.toString(SafeToStopSetsHypergraph.class, this,
+            "nodesSize", nodes.size(),
+            "edgesSize", edges.size());
     }
 }

@@ -39,8 +39,9 @@ import org.apache.ignite.lang.IgniteExperimental;
  */
 @IgniteExperimental
 public final class SafeToStopSetsSupport {
+    /** */
     private SafeToStopSetsSupport() {
-        /** */
+        // No instances.
     }
 
     /**
@@ -87,7 +88,7 @@ public final class SafeToStopSetsSupport {
 
         List<BitSet> requireds = new ArrayList<>();
         List<List<Integer>> grps = new ArrayList<>();
-        List<BitSet> groupBits = new ArrayList<>();
+        List<BitSet> grpBits = new ArrayList<>();
         BitSet closed = new BitSet();
 
         for (ClusterNode node : order) {
@@ -113,26 +114,26 @@ public final class SafeToStopSetsSupport {
             int bestSize = Integer.MAX_VALUE;
 
             for (int i = 0; i < grps.size(); i++) {
-                if (closed.get(i) || groupBits.get(i).cardinality() >= maxGroupSize)
+                if (closed.get(i) || grpBits.get(i).cardinality() >= maxGroupSize)
                     continue;
 
-                if (conflicts(requireds, groupBits.get(i)))
+                if (conflicts(requireds, grpBits.get(i)))
                     continue;
 
-                if (groupBits.get(i).cardinality() < bestSize) {
-                    bestSize = groupBits.get(i).cardinality();
+                if (grpBits.get(i).cardinality() < bestSize) {
+                    bestSize = grpBits.get(i).cardinality();
                     best = i;
                 }
             }
 
             if (best >= 0) {
-                groupBits.get(best).set(idx);
+                grpBits.get(best).set(idx);
             }
             else {
                 BitSet bits = new BitSet(hg.nodes().size());
 
                 bits.set(idx);
-                groupBits.add(bits);
+                grpBits.add(bits);
                 grps.add(new ArrayList<>());
 
                 if (alone)
@@ -164,12 +165,12 @@ public final class SafeToStopSetsSupport {
      * reason, never printed silently, and is rejected when the context does not allow a structure-only
      * answer.
      *
-     * @param groups Candidate partition of the snapshot nodes.
+     * @param grps Candidate partition of the snapshot nodes.
      * @param ctx Snapshot of the cluster state.
      * @return Verification result; {@link SafeToStopSetsVerification#failed()} is {@code true} when the
      *      command must fail instead of printing the groups.
      */
-    public static SafeToStopSetsVerification verify(List<List<UUID>> groups, SafeToStopSetsContext ctx) {
+    public static SafeToStopSetsVerification verify(List<List<UUID>> grps, SafeToStopSetsContext ctx) {
         if (!ctx.partitionOwnersAvailable())
             return new SafeToStopSetsVerification(
                 false,
@@ -189,7 +190,7 @@ public final class SafeToStopSetsSupport {
                         + "), the answer is void, retry after the topology stabilizes"),
                 Collections.emptyList());
 
-        List<String> violations = structuralViolations(groups, ctx);
+        List<String> violations = structuralViolations(grps, ctx);
 
         if (!violations.isEmpty())
             return new SafeToStopSetsVerification(
@@ -223,7 +224,7 @@ public final class SafeToStopSetsSupport {
                         + "checked against the actual layout");
 
             reasons.add("The strategy must read the partition owners, the groups produced without the read: "
-                + groups);
+                + grps);
 
             return new SafeToStopSetsVerification(
                 false,
@@ -232,7 +233,7 @@ public final class SafeToStopSetsSupport {
                 Collections.emptyList());
         }
 
-        violations = semanticViolations(groups, ctx);
+        violations = semanticViolations(grps, ctx);
 
         if (!violations.isEmpty())
             return new SafeToStopSetsVerification(
@@ -252,7 +253,7 @@ public final class SafeToStopSetsSupport {
      * The structure level: the group list must be a partition of the snapshot nodes — every snapshot node in
      * exactly one group, no empty groups, no unknown nodes.
      */
-    private static List<String> structuralViolations(List<List<UUID>> groups, SafeToStopSetsContext ctx) {
+    private static List<String> structuralViolations(List<List<UUID>> grps, SafeToStopSetsContext ctx) {
         List<String> res = new ArrayList<>();
         Set<UUID> snapshot = new HashSet<>();
 
@@ -261,16 +262,16 @@ public final class SafeToStopSetsSupport {
 
         Set<UUID> seen = new HashSet<>();
 
-        for (int i = 0; i < groups.size(); i++) {
-            List<UUID> group = groups.get(i);
+        for (int i = 0; i < grps.size(); i++) {
+            List<UUID> grp = grps.get(i);
 
-            if (group.isEmpty()) {
+            if (grp.isEmpty()) {
                 res.add("Group #" + i + " is empty");
 
                 continue;
             }
 
-            for (UUID node : group) {
+            for (UUID node : grp) {
                 if (!seen.add(node))
                     res.add("Node [" + node + "] belongs to more than one group");
 
@@ -294,15 +295,15 @@ public final class SafeToStopSetsSupport {
      * task as "no safe group" instead. The owner sets of the snapshot are already restricted to the
      * snapshot nodes, so a node outside the snapshot can neither form nor satisfy a constraint.
      */
-    private static List<String> semanticViolations(List<List<UUID>> groups, SafeToStopSetsContext ctx) {
+    private static List<String> semanticViolations(List<List<UUID>> grps, SafeToStopSetsContext ctx) {
         List<String> res = new ArrayList<>();
 
         for (PartitionOwners owners : ctx.partitionOwners()) {
             Set<UUID> set = new HashSet<>(owners.owners());
 
-            for (List<UUID> group : groups) {
-                if (group.size() > 1 && group.containsAll(set)) {
-                    res.add("Group " + group + " fully contains the owners of partition ["
+            for (List<UUID> grp : grps) {
+                if (grp.size() > 1 && grp.containsAll(set)) {
+                    res.add("Group " + grp + " fully contains the owners of partition ["
                         + owners.cacheGroupName() + '/' + owners.partition() + "]: " + owners.owners());
 
                     break;
@@ -329,7 +330,7 @@ public final class SafeToStopSetsSupport {
      * The search is deterministic (fixed sweep order by group index and node bit position), and stops when
      * no improvement is possible or the iteration budget is exhausted.
      *
-     * @param groups Initial partition (typically from {@link #greedy}), all groups safe.
+     * @param grps Initial partition (typically from {@link #greedy}), all groups safe.
      * @param hg Owner hypergraph.
      * @param order Canonical node order (unused in the current implementation, kept for SPI compatibility).
      * @param maxGroupSize Maximum group size, at least {@code 1}.
@@ -337,7 +338,7 @@ public final class SafeToStopSetsSupport {
      *      all groups remain safe.
      */
     public static List<List<UUID>> repair(
-        List<List<UUID>> groups,
+        List<List<UUID>> grps,
         SafeToStopSetsHypergraph hg,
         List<ClusterNode> order,
         int maxGroupSize
@@ -346,12 +347,12 @@ public final class SafeToStopSetsSupport {
         int maxIterations = 10 * n * n;
         int iterations = 0;
 
-        List<BitSet> bits = new ArrayList<>(groups.size());
+        List<BitSet> bits = new ArrayList<>(grps.size());
 
-        for (List<UUID> group : groups) {
+        for (List<UUID> grp : grps) {
             BitSet b = new BitSet(n);
 
-            for (UUID id : group)
+            for (UUID id : grp)
                 b.set(hg.indexOf(id));
 
             bits.add(b);
@@ -489,14 +490,14 @@ public final class SafeToStopSetsSupport {
      * @param requireds Bit sets of the edges containing the candidate node, each without the node itself;
      *      an empty required set means an edge consisting of the candidate node alone, which conflicts with
      *      any group.
-     * @param group Current group as a bit set over the hypergraph nodes.
+     * @param grp Current group as a bit set over the hypergraph nodes.
      * @return {@code true} if adding the candidate node to the group would contain a whole edge.
      */
-    private static boolean conflicts(List<BitSet> requireds, BitSet group) {
+    private static boolean conflicts(List<BitSet> requireds, BitSet grp) {
         for (BitSet required : requireds) {
             BitSet rest = (BitSet) required.clone();
 
-            rest.andNot(group);
+            rest.andNot(grp);
 
             if (rest.isEmpty())
                 return true;

@@ -100,30 +100,30 @@ public class SafeToStopSetsCommand implements ComputeCommand<SafeToStopSetsComma
         for (SafeToStopSetsNodeInfo node : res.nodes())
             consistentId.put(node.id(), node.consistentId());
 
-        List<List<UUID>> groups = new ArrayList<>(res.groups());
+        List<List<UUID>> grps = new ArrayList<>(res.groups());
 
-        groups.sort(Comparator.comparing(group -> consistentId.get(group.get(0))));
+        grps.sort(Comparator.comparing(grp -> consistentId.get(grp.get(0))));
 
-        List<String> groupLines = new ArrayList<>();
+        List<String> grpLines = new ArrayList<>();
         List<String> singletons = new ArrayList<>();
 
-        for (List<UUID> group : groups) {
-            if (group.size() == 1) {
-                singletons.add(consistentId.get(group.get(0)));
+        for (List<UUID> grp : grps) {
+            if (grp.size() == 1) {
+                singletons.add(consistentId.get(grp.get(0)));
             }
             else {
-                List<String> ids = new ArrayList<>(group.size());
+                List<String> ids = new ArrayList<>(grp.size());
 
-                for (UUID id : group)
+                for (UUID id : grp)
                     ids.add(consistentId.get(id));
 
-                groupLines.add("  [" + (groupLines.size() + 1) + "] " + String.join(", ", ids));
+                grpLines.add("  [" + (grpLines.size() + 1) + "] " + String.join(", ", ids));
             }
         }
 
-        if (!groupLines.isEmpty()) {
+        if (!grpLines.isEmpty()) {
             printer.accept("Groups (stop the nodes of one group at a time, then re-run this command):");
-            groupLines.forEach(printer);
+            grpLines.forEach(printer);
         }
 
         if (!singletons.isEmpty()) {
