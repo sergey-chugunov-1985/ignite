@@ -196,6 +196,41 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
     }
 
     /**
+     * A configuration that makes the number of copies unprovable is a refusal of the strategy, not a fault of
+     * the command: the cause chain must carry an {@link IllegalArgumentException}, the marker that turns the
+     * failure into a usage error (exit code 1) listing the offending groups and the strategy hint.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testStructureOnlyRefusalIsUsageError() throws Exception {
+        startGridsMultiThreaded(3);
+
+        grid(0).createCache(new CacheConfiguration<>(CACHE_NAME)
+            .setCacheMode(PARTITIONED)
+            .setBackups(2)
+            .setPartitionLossPolicy(READ_WRITE_SAFE)
+            .setAffinity(new CustomAffinityFunction(false, 32)));
+
+        awaitPartitionMapExchange();
+
+        try {
+            executeTask();
+
+            fail("A configuration that does not prove the number of copies must be refused");
+        }
+        catch (Exception e) {
+            assertTrue("IAE must be in cause chain: " + e, X.hasCause(e, IllegalArgumentException.class));
+
+            String msg = X.cause(e, IllegalArgumentException.class).getMessage();
+
+            assertTrue(msg, msg.contains(CACHE_NAME));
+            assertTrue(msg, msg.contains("not RendezvousAffinityFunction"));
+            assertTrue(msg, msg.contains("--strategy"));
+        }
+    }
+
+    /**
      * When every cache group is excluded, there is no layout left to protect: the task fails closed instead of
      * printing the whole cluster as one group.
      *
@@ -267,5 +302,16 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
         Collection<ClusterNode> nodes = Collections.singleton(coordinator);
 
         return CommandUtils.execute(null, grid(0), SafeToStopSetsTask.class, arg, nodes);
+    }
+
+    /** A subclass of the default affinity: a subclass may change the assignment, so the proof is blocked. */
+    private static class CustomAffinityFunction extends RendezvousAffinityFunction {
+        /**
+         * @param exclNeighbors Exclude neighbors.
+         * @param parts Partitions.
+         */
+        CustomAffinityFunction(boolean exclNeighbors, int parts) {
+            super(exclNeighbors, parts);
+        }
     }
 }

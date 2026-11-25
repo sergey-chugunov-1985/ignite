@@ -34,9 +34,9 @@ import org.jetbrains.annotations.Nullable;
  * <p>
  * Failure semantics are fail-closed and deterministic: an unknown name fails with
  * {@link IllegalArgumentException} (so the operator gets a usage error, not a runtime one) listing the
- * available names; two providers sharing a name fail with {@link IllegalStateException} regardless of the
- * requested name; a provider that cannot be loaded or instantiated fails with {@link IgniteException}
- * carrying the provider's fully qualified class name and the cause.
+ * available names; two providers sharing a name fail with {@link IllegalArgumentException} as well,
+ * regardless of the requested name; a provider that cannot be loaded or instantiated fails with
+ * {@link IgniteException} carrying the provider's fully qualified class name and the cause.
  */
 @GridInternal
 public final class SafeToStopSetsStrategies {
@@ -50,9 +50,10 @@ public final class SafeToStopSetsStrategies {
      *      {@code backups-count} strategy.
      * @return The resolved strategy.
      * @throws IllegalArgumentException If the name is not {@code null} or empty and no registered strategy
-     *      has that name; the message lists the available names.
-     * @throws IllegalStateException If two registered strategies share a name; the message names both
-     *      implementations.
+     *      has that name; the message lists the available names. Also thrown when two registered strategies
+     *      share a name, whatever the requested name is; the message names both implementations. Both cases
+     *      are operator errors of the command line or of the deployment, so the command reports them as a
+     *      usage error, not as an internal one.
      * @throws IgniteException If a registered provider cannot be loaded or instantiated; the message
      *      carries the provider's fully qualified class name and the cause.
      */
@@ -72,7 +73,7 @@ public final class SafeToStopSetsStrategies {
                 String previous = byName.put(strategyName, fqcn);
 
                 if (previous != null)
-                    throw new IllegalStateException(
+                    throw new IllegalArgumentException(
                         "Duplicate safe-to-stop-sets strategy name [name=" + strategyName + "]: [" + previous
                             + "] and [" + fqcn + "]");
 

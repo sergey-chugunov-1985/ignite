@@ -128,7 +128,8 @@ public class SafeToStopSetsStrategiesSelfTest {
     /**
      * Two providers sharing a name must fail deterministically, regardless of the requested name (the
      * duplicate is detected while scanning the registry, not when matching the name), with both
-     * implementations named in the message.
+     * implementations named in the message, and as a usage error: the operator has to see the conflicting
+     * classes, not an internal error.
      *
      * @throws Exception If failed.
      */
@@ -174,7 +175,7 @@ public class SafeToStopSetsStrategiesSelfTest {
             SafeToStopSetsStrategies.resolve(requestedName);
 
             fail("Duplicate strategy name must fail");
-        } catch (IllegalStateException e) {
+        } catch (IllegalArgumentException e) {
             assertTrue(e.getMessage(), e.getMessage().contains(BackupsCountSafeToStopSetsStrategy.class.getName()));
             assertTrue(e.getMessage(), e.getMessage().contains(TestDuplicateNameSafeToStopSetsStrategy.class.getName()));
         }

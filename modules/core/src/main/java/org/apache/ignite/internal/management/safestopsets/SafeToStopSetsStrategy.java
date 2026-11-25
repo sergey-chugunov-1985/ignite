@@ -55,6 +55,9 @@ public interface SafeToStopSetsStrategy {
      * @param ctx Immutable read-only snapshot of the cluster state at a fixed topology version.
      * @return Exact partition of {@code ctx.nodes()} into groups: every node appears exactly once, no empty
      *      groups. Groups of size 1 mean "this node cannot be stopped together with anyone".
+     * @throws IllegalArgumentException If the strategy refuses to answer for configuration reasons; the
+     *      message must list the offending groups and suggest an alternative strategy. Any other exception is
+     *      reported as an internal error (exit code 4) and must be reserved for genuine faults.
      */
     List<List<UUID>> split(SafeToStopSetsContext ctx);
 }

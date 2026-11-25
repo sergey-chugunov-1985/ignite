@@ -118,8 +118,13 @@ public interface SafeToStopSetsContext {
      * DHT topology is not ready (the cluster is not activated, the node is starting, a cache is being started
      * or destroyed), never that the cluster is in-memory. Safety is not provable on a non-ready topology, so
      * the value is terminal for the command.
+     * <p>
+     * The value also turns {@code false} when a read revealed a partition with no owner left: the snapshot is
+     * unusable after that, even if the strategy caught the failure of {@link #partitionOwners()} and produced
+     * an answer from the configuration. The verification checks this flag first, so a strategy cannot turn an
+     * unreadable layout into a {@code structure-only} answer.
      *
-     * @return {@code True} if {@link #partitionOwners()} can be read.
+     * @return {@code True} if {@link #partitionOwners()} can be read and no fatal inconsistency was found.
      */
     boolean partitionOwnersAvailable();
 

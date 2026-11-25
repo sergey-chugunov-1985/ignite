@@ -208,7 +208,7 @@ public class SafeToStopSetsBackupsCountStrategySelfTest {
 
             fail("A blocked configuration must be refused");
         }
-        catch (IllegalStateException expected) {
+        catch (IllegalArgumentException expected) {
             String msg = expected.getMessage();
 
             assertTrue(msg, msg.contains(GRP));
@@ -219,6 +219,27 @@ public class SafeToStopSetsBackupsCountStrategySelfTest {
         }
 
         assertFalse("A refusal must not read the partition owners", ctx.ownersRead());
+    }
+
+    /**
+     * A cluster without a single user cache group has no copy bound at all, so every node may be stopped
+     * together. The "no limit" sentinel must not be used to compute the number of groups: the ceiling of
+     * {@code nodes / sentinel} overflows into a negative capacity.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testNoCacheGroupsIsSingleGroup() throws Exception {
+        List<UUID> nodes = ids(6);
+
+        TestSafeToStopSetsContext ctx = new TestSafeToStopSetsContext(
+            nodes, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyList());
+
+        List<List<UUID>> res = new BackupsCountSafeToStopSetsStrategy().split(ctx);
+
+        assertEquals(1, res.size());
+        assertEquals(nodes, res.get(0));
+        assertFalse("There is no layout to read without cache groups", ctx.ownersRead());
     }
 
     /**

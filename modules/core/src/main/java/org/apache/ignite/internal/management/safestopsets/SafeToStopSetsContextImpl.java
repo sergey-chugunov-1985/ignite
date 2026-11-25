@@ -204,7 +204,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
     /** {@inheritDoc} */
     @Override public boolean partitionOwnersAvailable() {
-        return ownersAvailable;
+        return ownersAvailable && !notReady;
     }
 
     /** {@inheritDoc} */
@@ -335,7 +335,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
      * @return Owned partitions, ordered by group name and partition number.
      */
     private List<PartitionOwners> readPartitionOwners() {
-        if (!ownersAvailable)
+        if (!partitionOwnersAvailable())
             throw new IgniteException("Partition owners are not available: " + String.join("; ", notReadyReasons()));
 
         Set<UUID> srvIds = new HashSet<>();

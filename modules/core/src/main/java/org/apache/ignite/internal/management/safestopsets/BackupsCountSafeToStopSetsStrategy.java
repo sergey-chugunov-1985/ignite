@@ -51,16 +51,16 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
      * @param ctx Snapshot of the cluster state.
      * @return Partition of the snapshot nodes into groups of no more than one copy less than the smallest
      *      group's copy bound, or singletons if no two nodes may be stopped together.
-     * @throws IllegalStateException If the number of copies cannot be derived from the configuration at all:
-     *      the affinity of a group is not {@code RendezvousAffinityFunction} or copy filters are set without
-     *      {@code excludeNeighbors}. Such a configuration is fixed by the operator, not by reading the layout,
-     *      so the command fails closed and suggests a strategy that computes the actual layout.
+     * @throws IllegalArgumentException If the number of copies cannot be derived from the configuration at
+     *      all: the affinity of a group is not {@code RendezvousAffinityFunction} or copy filters are set
+     *      without {@code excludeNeighbors}. Such a configuration is fixed by the operator, not by reading the
+     *      layout, so the command fails closed and suggests a strategy that computes the actual layout.
      */
     @Override public List<List<UUID>> split(SafeToStopSetsContext ctx) {
         Map<String, String> blockers = ctx.structureOnlyBlockers();
 
         if (!blockers.isEmpty())
-            throw new IllegalStateException(structureOnlyFailure(blockers));
+            throw new IllegalArgumentException(structureOnlyFailure(blockers));
 
         int maxGroupSize = maxGroupSize(ctx);
 
@@ -84,7 +84,9 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
      * overflows.
      *
      * @param ctx Snapshot of the cluster state.
-     * @return Maximum size of a safe group, {@code 0} if no two nodes may be stopped together.
+     * @return Maximum size of a safe group, {@code 0} if no two nodes may be stopped together, and the
+     *      "no limit" sentinel when the snapshot has no cache group in scope: there is no copy to lose then,
+     *      so the whole cluster may be stopped at once.
      */
     private static int maxGroupSize(SafeToStopSetsContext ctx) {
         int res = Integer.MAX_VALUE;
@@ -106,21 +108,28 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
      * Deals the snapshot nodes round-robin over the groups: the number of groups is the ceiling of
      * {@code nodes / maxGroupSize}, so no group exceeds the bound, the sizes differ by at most one, and the
      * result is deterministic because the nodes are ordered by consistent ID.
+     * <p>
+     * The bound is clamped by the cluster size before the number of groups is computed: a snapshot without a
+     * single user cache group has no copy bound at all, so {@link #maxGroupSize(SafeToStopSetsContext)}
+     * returns its "no limit" sentinel, and {@code nodes + bound - 1} would overflow into a negative group
+     * count. One group over all nodes is the correct answer there: nothing is lost by stopping them together.
      *
      * @param nodes Snapshot nodes, ordered by consistent ID.
      * @param maxGroupSize Maximum size of a group, at least {@code 2}.
      * @return Groups of node IDs, each of size no more than {@code maxGroupSize}.
      */
     private static List<List<UUID>> roundRobin(List<ClusterNode> nodes, int maxGroupSize) {
-        int groups = (nodes.size() + maxGroupSize - 1) / maxGroupSize;
+        int bound = Math.max(1, Math.min(maxGroupSize, nodes.size()));
 
-        List<List<UUID>> res = new ArrayList<>(groups);
+        int grps = (int)((nodes.size() + (long)bound - 1) / bound);
 
-        for (int i = 0; i < groups; i++)
+        List<List<UUID>> res = new ArrayList<>(grps);
+
+        for (int i = 0; i < grps; i++)
             res.add(new ArrayList<>());
 
         for (int i = 0; i < nodes.size(); i++)
-            res.get(i % groups).add(nodes.get(i).id());
+            res.get(i % grps).add(nodes.get(i).id());
 
         return res;
     }

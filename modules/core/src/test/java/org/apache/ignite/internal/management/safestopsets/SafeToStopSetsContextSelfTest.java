@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.ignite.IgniteCache;
+import org.apache.ignite.IgniteException;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.CacheRebalanceMode;
 import org.apache.ignite.cache.PartitionLossPolicy;
@@ -433,6 +434,48 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
             if (CACHE_NAME.equals(partOwners.cacheGroupName()))
                 assertFalse(partOwners.owners().contains(stoppingNodeId));
         }
+    }
+
+    /**
+     * A partition that loses its only copy makes the snapshot unusable, not just the read: after the failure
+     * the snapshot reports itself as not usable, so the verification cannot accept an answer that a strategy
+     * built from the configuration after swallowing the exception.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testPartitionWithoutOwnerIsNotReady() throws Exception {
+        startGridsMultiThreaded(3);
+
+        // A group without backups keeps exactly one copy of every partition, so excluding one node from the
+        // snapshot leaves the partitions of that node without a single owner.
+        createCache(partitionedCache(NO_BACKUP_CACHE_NAME, 0));
+
+        fillCache(NO_BACKUP_CACHE_NAME);
+
+        awaitPartitionMapExchange();
+
+        Set<UUID> killSet = Collections.singleton(grid(1).localNode().id());
+
+        grid(0).context().distributedMetastorage().write(
+            SafeToStopSetsContextImpl.GRACEFUL_SHUTDOWN_NODES_KEY,
+            new HashSet<>(killSet));
+
+        SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0));
+
+        assertTrue("The snapshot is usable until the layout is read", ctx.partitionOwnersAvailable());
+
+        try {
+            ctx.partitionOwners();
+
+            fail("A partition without an owner must not be reported");
+        }
+        catch (IgniteException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("No owner is left"));
+        }
+
+        assertTrue(ctx.notReady());
+        assertFalse("A snapshot that lost a partition is not usable any more", ctx.partitionOwnersAvailable());
     }
 
     /**
