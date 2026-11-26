@@ -23,6 +23,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -88,11 +89,11 @@ public class SafeToStopSetsCommand implements ComputeCommand<SafeToStopSetsComma
                 printer.accept("  Reason: " + reason);
         }
 
-        if (arg.noBackup() == SafeToStopSetsNoBackupMode.WARNING && !res.excludedNoBackupGroups().isEmpty()) {
-            printer.accept("Caches without backups (excluded from the computation, the answer does not cover them):");
+        if (!res.excludedGroups().isEmpty()) {
+            printer.accept("Excluded cache groups (not covered by this answer):");
 
-            for (String grpName : res.excludedNoBackupGroups())
-                printer.accept("  " + grpName);
+            for (Map.Entry<String, String> e : new TreeMap<>(res.excludedGroups()).entrySet())
+                printer.accept("  " + e.getKey() + " - " + e.getValue());
         }
 
         Map<UUID, String> consistentId = new HashMap<>();

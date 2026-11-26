@@ -353,15 +353,19 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
 
         assertEquals(new HashSet<>(Arrays.asList(CACHE_NAME, NO_BACKUP_CACHE_NAME, NO_BACKUP_BLOCKED_CACHE_NAME)),
             kept.cacheGroups().keySet());
-        assertTrue("The exclusion must be opt-in: " + kept.excludedNoBackupGroups(),
-            kept.excludedNoBackupGroups().isEmpty());
+        assertTrue("The exclusion must be opt-in: " + kept.excludedCacheGroups(),
+            kept.excludedCacheGroups().isEmpty());
 
         for (SafeToStopSetsNoBackupMode mode : SafeToStopSetsNoBackupMode.values()) {
             SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0), mode);
 
             assertEquals(Collections.singleton(CACHE_NAME), ctx.cacheGroups().keySet());
-            assertEquals("The excluded names are reported in the group name order",
-                Arrays.asList(NO_BACKUP_BLOCKED_CACHE_NAME, NO_BACKUP_CACHE_NAME), ctx.excludedNoBackupGroups());
+            assertEquals("The excluded groups are reported in the group name order",
+                Arrays.asList(NO_BACKUP_BLOCKED_CACHE_NAME, NO_BACKUP_CACHE_NAME),
+                new ArrayList<>(ctx.excludedCacheGroups().keySet()));
+            assertEquals("Every exclusion carries the reason of the exclusion",
+                Collections.singleton(SafeToStopSetsContextImpl.NO_BACKUP_REASON),
+                new HashSet<>(ctx.excludedCacheGroups().values()));
 
             assertTrue("The configuration of an excluded group must not block the answer: " + ctx.configOnlyBlockers(),
                 ctx.configOnlyBlockers().isEmpty());
@@ -397,8 +401,63 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
         SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0), SafeToStopSetsNoBackupMode.IGNORE);
 
         assertEquals(Collections.singleton(REPL_CACHE_NAME), ctx.cacheGroups().keySet());
-        assertTrue("A replicated group must not be excluded: " + ctx.excludedNoBackupGroups(),
-            ctx.excludedNoBackupGroups().isEmpty());
+        assertTrue("A replicated group must not be excluded: " + ctx.excludedCacheGroups(),
+            ctx.excludedCacheGroups().isEmpty());
+    }
+
+    /**
+     * An exclusion declared by the strategy narrows the snapshot exactly like the cluster-level one: the group is
+     * neither split nor verified, its configuration does not block the answer, its partitions are not read, and
+     * the declaration reaches the report with its own reason.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testStrategyExclusionsAreApplied() throws Exception {
+        startGridsMultiThreaded(3);
+
+        createCache(partitionedCache(CACHE_NAME, 1));
+
+        // The configuration of this group would block the configuration-only proof, and the group itself has
+        // backups, so only the strategy can remove it from the answer.
+        createCache(new CacheConfiguration<>(NO_BACKUP_BLOCKED_CACHE_NAME)
+            .setCacheMode(CacheMode.PARTITIONED)
+            .setBackups(2)
+            .setPartitionLossPolicy(PartitionLossPolicy.READ_WRITE_SAFE)
+            .setAffinity(new CustomAffinityFunction(false, PARTS)));
+
+        awaitPartitionMapExchange();
+
+        String reason = "the strategy does not cover this group";
+
+        SafeToStopSetsStrategy strategy = new ExcludingContextStrategy(
+            Collections.singletonMap(NO_BACKUP_BLOCKED_CACHE_NAME, reason));
+
+        SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(
+            grid(0), false, Collections.emptyMap(), strategy);
+
+        assertEquals(Collections.singleton(CACHE_NAME), ctx.cacheGroups().keySet());
+        assertEquals(Collections.singletonMap(NO_BACKUP_BLOCKED_CACHE_NAME, reason), ctx.excludedCacheGroups());
+        assertTrue("The configuration of an excluded group must not block the answer: " + ctx.configOnlyBlockers(),
+            ctx.configOnlyBlockers().isEmpty());
+        assertNotNull(ctx.affinityNodesCount(CACHE_NAME));
+
+        try {
+            ctx.affinityNodesCount(NO_BACKUP_BLOCKED_CACHE_NAME);
+
+            fail("The affinity of an excluded group must not be read");
+        }
+        catch (IllegalArgumentException expected) {
+            // Expected: the excluded group is not part of the snapshot at all.
+        }
+
+        Set<String> ownerGroups = new HashSet<>();
+
+        for (PartitionOwners owners : ctx.partitionOwners())
+            ownerGroups.add(owners.cacheGroupName());
+
+        assertEquals("The partitions of an excluded group must not be read", Collections.singleton(CACHE_NAME),
+            ownerGroups);
     }
 
     /**
@@ -763,6 +822,35 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
          */
         CustomAffinityFunction(boolean exclNeighbors, int parts) {
             super(exclNeighbors, parts);
+        }
+    }
+
+    /** A strategy that declares the given groups as not covered; it must never be split. */
+    private static class ExcludingContextStrategy implements SafeToStopSetsStrategy {
+        /** Declaration of the strategy. */
+        private final Map<String, String> excluded;
+
+        /**
+         * @param excluded Group name to the reason why the group is not covered.
+         */
+        ExcludingContextStrategy(Map<String, String> excluded) {
+            this.excluded = excluded;
+        }
+
+        /** {@inheritDoc} */
+        @Override public String name() {
+            return "excluding-context";
+        }
+
+        /** {@inheritDoc} */
+        @Override public Map<String, String> excludeGroups(Map<String, String> options,
+            Map<String, CacheGroupInfo> groups) {
+            return excluded;
+        }
+
+        /** {@inheritDoc} */
+        @Override public List<List<UUID>> split(SafeToStopSetsContext ctx) {
+            throw new AssertionError("The exclusions must be applied before the split");
         }
     }
 }

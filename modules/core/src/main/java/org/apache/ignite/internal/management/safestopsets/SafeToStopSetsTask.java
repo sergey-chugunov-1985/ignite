@@ -19,6 +19,7 @@ package org.apache.ignite.internal.management.safestopsets;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -40,10 +41,10 @@ import static org.apache.ignite.plugin.security.SecurityPermissionSetBuilder.NO_
  * <p>
  * The job is mapped to a single node — the coordinator, selected by the command: it is the first to observe
  * topology changes, so a repeated topology version check on that node is sufficient for the answer to be
- * valid. The pipeline of a job: a read-only cluster snapshot is taken, the strategy is resolved by name,
- * the groups are computed and the result is always verified against the snapshot by
- * {@link SafeToStopSetsSupport}. A failed verification or a snapshot that is not usable fails the job:
- * no partial answer is ever transferred to the client.
+ * valid. The pipeline of a job: the strategy is resolved by name and first declares the cache groups its answer
+ * does not cover, a read-only cluster snapshot is taken without those groups, the groups are computed and the
+ * result is always verified against the snapshot by {@link SafeToStopSetsSupport}. A failed verification or a
+ * snapshot that is not usable fails the job: no partial answer is ever transferred to the client.
  */
 @GridInternal
 public class SafeToStopSetsTask
@@ -120,15 +121,16 @@ public class SafeToStopSetsTask
 
         /** {@inheritDoc} */
         @Override protected SafeToStopSetsTaskResult run(SafeToStopSetsCommandArg arg) {
-            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(ignite, arg.noBackup());
+            SafeToStopSetsStrategy strategy = SafeToStopSetsStrategies.resolve(arg.strategy());
+
+            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(
+                ignite, arg.noBackup() != null, Collections.emptyMap(), strategy);
 
             if (!ctx.partitionOwnersAvailable())
                 throw notReady(ctx);
 
-            if (ctx.cacheGroups().isEmpty() && !ctx.excludedNoBackupGroups().isEmpty())
+            if (ctx.cacheGroups().isEmpty() && !ctx.excludedCacheGroups().isEmpty())
                 throw nothingToCompute(ctx);
-
-            SafeToStopSetsStrategy strategy = SafeToStopSetsStrategies.resolve(arg.strategy());
 
             List<List<UUID>> grps;
 
@@ -173,7 +175,7 @@ public class SafeToStopSetsTask
                 strategy.name(),
                 strategy.getClass().getName(),
                 ctx.gracefulShutdownNodes(),
-                ctx.excludedNoBackupGroups()
+                ctx.excludedCacheGroups()
             );
         }
 
@@ -186,9 +188,13 @@ public class SafeToStopSetsTask
          * @return The operator rejection, exit code 1.
          */
         private static IllegalArgumentException nothingToCompute(SafeToStopSetsContextImpl ctx) {
+            String excluded = ctx.excludedCacheGroups().entrySet().stream()
+                .map(e -> e.getKey() + " - " + e.getValue())
+                .collect(Collectors.joining("; "));
+
             return new IllegalArgumentException("Nothing to compute: every cache group was excluded from the "
-                + "computation as a group without backups " + ctx.excludedNoBackupGroups()
-                + "; re-run the command without --no-backup to compute over every group");
+                + "computation [" + excluded + "]; re-run the command without --no-backup or with other "
+                + "--strategy-options to leave at least one group in scope");
         }
 
         /**

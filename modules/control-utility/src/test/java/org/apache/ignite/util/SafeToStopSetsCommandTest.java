@@ -354,8 +354,8 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
 
     /**
      * A cache without backups forbids every group of more than one node, so a cluster that has one is rejected
-     * unless the operator excludes such caches. With {@code --no-backup ignore} the answer covers the remaining
-     * groups and the excluded caches are not mentioned; with {@code --no-backup warning} they are listed.
+     * unless the operator excludes such caches with {@code --no-backup}. The excluded caches are then named in
+     * the answer with the reason why the answer does not cover them.
      *
      * @throws Exception If failed.
      */
@@ -374,18 +374,16 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
 
         GridTestUtils.assertContains(log, ignored,
             "Groups (stop the nodes of one group at a time, then re-run this command):");
-        assertFalse("The ignore mode must stay silent about the excluded caches, output:\n" + ignored,
-            ignored.contains("without backups"));
+        GridTestUtils.assertContains(log, ignored, "Excluded cache groups (not covered by this answer):");
 
         String warned = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS, "--no-backup", "warning");
 
-        GridTestUtils.assertContains(log, warned,
-            "Caches without backups (excluded from the computation, the answer does not cover them):");
-        GridTestUtils.assertContains(log, warned, "  " + NO_BACKUP_CACHE_NAME);
+        GridTestUtils.assertContains(log, warned, "Excluded cache groups (not covered by this answer):");
+        GridTestUtils.assertContains(log, warned, "  " + NO_BACKUP_CACHE_NAME + " - has no backups");
 
         SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult) lastOperationResult;
 
-        assertEquals(Collections.singletonList(NO_BACKUP_CACHE_NAME), res.excludedNoBackupGroups());
+        assertEquals(Collections.singleton(NO_BACKUP_CACHE_NAME), res.excludedGroups().keySet());
     }
 
     /**

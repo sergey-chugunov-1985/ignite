@@ -18,6 +18,7 @@
 package org.apache.ignite.internal.management.safestopsets;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.internal.Order;
 import org.apache.ignite.internal.dto.IgniteDataTransferObject;
@@ -76,11 +77,11 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
     List<UUID> gracefulShutdownNodes;
 
     /**
-     * Cache groups excluded from the computation as groups without backups, ordered by name; empty when the
-     * exclusion was not requested or no group matched. The answer does not cover these groups.
+     * Cache groups excluded from the computation, mapped to the reason why, ordered by name; empty when nothing
+     * was excluded. The answer does not cover these groups.
      */
     @Order(8)
-    List<String> excludedNoBackupGroups;
+    Map<String, String> excludedGroups;
 
     /**
      * For externalization only.
@@ -106,7 +107,7 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
      * @param strategyName Name of the strategy that produced the groups.
      * @param strategyClass Fully qualified class name of the strategy implementation.
      * @param gracefulShutdownNodes Nodes planned to stop gracefully.
-     * @param excludedNoBackupGroups Cache groups excluded from the computation as groups without backups.
+     * @param excludedGroups Cache groups excluded from the computation, mapped to the reason why.
      */
     public SafeToStopSetsTaskResult(
         List<SafeToStopSetsNodeInfo> nodes,
@@ -117,7 +118,7 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
         String strategyName,
         String strategyClass,
         List<UUID> gracefulShutdownNodes,
-        List<String> excludedNoBackupGroups
+        Map<String, String> excludedGroups
     ) {
         this.nodes = nodes;
         this.topVer = topVer;
@@ -127,7 +128,7 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
         this.strategyName = strategyName;
         this.strategyClass = strategyClass;
         this.gracefulShutdownNodes = gracefulShutdownNodes;
-        this.excludedNoBackupGroups = excludedNoBackupGroups;
+        this.excludedGroups = excludedGroups;
     }
 
     /** @return Server nodes of the snapshot, ordered by consistent id. */
@@ -170,9 +171,9 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
         return gracefulShutdownNodes;
     }
 
-    /** @return Cache groups excluded from the computation as groups without backups, ordered by name. */
-    public List<String> excludedNoBackupGroups() {
-        return excludedNoBackupGroups;
+    /** @return Cache groups excluded from the computation, mapped to the reason why, ordered by name. */
+    public Map<String, String> excludedGroups() {
+        return excludedGroups;
     }
 
     /** {@inheritDoc} */

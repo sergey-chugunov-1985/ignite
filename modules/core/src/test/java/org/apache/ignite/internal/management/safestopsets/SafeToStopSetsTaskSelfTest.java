@@ -19,6 +19,7 @@ package org.apache.ignite.internal.management.safestopsets;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
@@ -185,7 +186,9 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
 
             SafeToStopSetsTaskResult res = executeTask(arg);
 
-            assertEquals(Collections.singletonList(NO_BACKUP_CACHE_NAME), res.excludedNoBackupGroups());
+            assertEquals(Collections.singleton(NO_BACKUP_CACHE_NAME), res.excludedGroups().keySet());
+            assertEquals(Collections.singleton(SafeToStopSetsContextImpl.NO_BACKUP_REASON),
+                new HashSet<>(res.excludedGroups().values()));
             assertTrue("The remaining groups allow a pair: " + res.groups(),
                 res.groups().stream().anyMatch(grp -> grp.size() > 1));
 
