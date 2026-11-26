@@ -152,6 +152,6 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
         for (Map.Entry<String, String> blocker : blockers.entrySet())
             sb.append("\n  ").append(blocker.getKey()).append(": ").append(blocker.getValue());
 
-        return sb.append("\nUse --strategy cells or --strategy dc, which compute the actual layout.").toString();
+        return sb.append("\nUse a strategy that computes the actual layout instead (see --strategy).").toString();
     }
 }

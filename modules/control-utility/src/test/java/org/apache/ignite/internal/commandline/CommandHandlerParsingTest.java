@@ -494,10 +494,10 @@ public class CommandHandlerParsingTest {
         assertNull(((SafeToStopSetsCommandArg)args.commandArg()).strategy());
         assertNull(((SafeToStopSetsCommandArg)args.commandArg()).noBackup());
 
-        args = parseArgs(asList(SAFE_TO_STOP_SETS, "--strategy", "cells"));
+        args = parseArgs(asList(SAFE_TO_STOP_SETS, "--strategy", "backups-count"));
 
         assertEquals(SafeToStopSetsCommand.class, args.command().getClass());
-        assertEquals("cells", ((SafeToStopSetsCommandArg)args.commandArg()).strategy());
+        assertEquals("backups-count", ((SafeToStopSetsCommandArg)args.commandArg()).strategy());
 
         args = parseArgs(asList(SAFE_TO_STOP_SETS, "--no-backup", "warning"));
 
