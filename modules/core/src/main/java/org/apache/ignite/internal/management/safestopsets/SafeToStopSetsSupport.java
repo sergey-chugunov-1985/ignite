@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.lang.IgniteExperimental;
 
@@ -54,6 +55,43 @@ public final class SafeToStopSetsSupport {
      */
     public static SafeToStopSetsHypergraph hypergraph(SafeToStopSetsContext ctx) {
         return SafeToStopSetsHypergraph.of(ctx);
+    }
+
+    /**
+     * Computes the group bound the configuration guarantees: one copy less than the smallest copy bound of the
+     * cache groups in scope, so a group of that size never holds all copies of a partition.
+     * <p>
+     * The copy bound of a group is {@code |affinityNodes(group)|}, not the number of server nodes: with
+     * persistence the affinity node set is restricted by the baseline, and for a {@code REPLICATED} group it is
+     * the copy set itself. For a {@code REPLICATED} group the bound is {@code |affinityNodes(group)|} computed
+     * without {@code backups + 1}: {@code backups} is {@link Integer#MAX_VALUE} there and the sum overflows.
+     * <p>
+     * This is the single definition of the two edge cases the strategies share, so no strategy has to repeat
+     * the arithmetic: {@link Integer#MAX_VALUE} when the snapshot has no cache group in scope (there is no copy
+     * to lose, the whole cluster may be stopped at once), and {@code 1} when the smallest group has a single
+     * copy (no two nodes may be stopped together, every node is a group of its own). There is no other sentinel:
+     * a group of one node is always safe.
+     *
+     * @param ctx Snapshot of the cluster state.
+     * @return Maximum size of a safe group, at least {@code 1}; {@link Integer#MAX_VALUE} means "no limit".
+     */
+    public static int maxSafeGroupSize(SafeToStopSetsContext ctx) {
+        if (ctx.cacheGroups().isEmpty())
+            return Integer.MAX_VALUE;
+
+        int smallest = Integer.MAX_VALUE;
+
+        for (CacheGroupInfo grp : ctx.cacheGroups().values()) {
+            int affinityNodes = ctx.affinityNodesCount(grp.name());
+
+            int copies = grp.mode() == CacheMode.REPLICATED
+                ? affinityNodes
+                : Math.min(grp.backups() + 1, affinityNodes);
+
+            smallest = Math.min(smallest, copies);
+        }
+
+        return Math.max(1, smallest - 1);
     }
 
     /**

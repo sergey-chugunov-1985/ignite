@@ -26,8 +26,9 @@ import org.apache.ignite.lang.IgniteExperimental;
  * Base class for strategies that always read the partition owners and build the answer from the actual
  * layout using the common engine (hypergraph, greedy, repair). The {@link #split(SafeToStopSetsContext)}
  * method is final: it orchestrates the engine and the subclasses only control the source of the safety
- * constraint ({@link #hypergraph(SafeToStopSetsContext)}), the node order, the maximum group size, and
- * whether the local search is enabled.
+ * constraint ({@link #hypergraph(SafeToStopSetsContext)}), the node order (the only hook a subclass must
+ * implement), the maximum group size (the configuration bound unless overridden), and whether the local
+ * search is enabled.
  * <p>
  * A strategy that does not fit this shape (for example, the configuration-only {@code backups-count} on
  * its fast path) implements {@link SafeToStopSetsStrategy} directly.
@@ -41,6 +42,8 @@ public abstract class AbstractSafeToStopSetsStrategy implements SafeToStopSetsSt
      *
      * @param ctx Snapshot of the cluster state.
      * @return Partition of the snapshot nodes into safe groups.
+     * @throws IllegalArgumentException If {@link #maxGroupSize(SafeToStopSetsContext)} returns a value less
+     *      than {@code 1}: the contract of the hook is violated, and a silent clamp would hide the defect.
      */
     @Override public final List<List<UUID>> split(SafeToStopSetsContext ctx) {
         ctx.partitionOwners();
@@ -52,7 +55,8 @@ public abstract class AbstractSafeToStopSetsStrategy implements SafeToStopSetsSt
         int maxGroupSize = maxGroupSize(ctx);
 
         if (maxGroupSize < 1)
-            maxGroupSize = 1;
+            throw new IllegalArgumentException(
+                getClass().getName() + ": maxGroupSize must be >= 1, got " + maxGroupSize);
 
         List<List<UUID>> result = SafeToStopSetsSupport.greedy(hg, order, maxGroupSize);
 
@@ -106,10 +110,20 @@ public abstract class AbstractSafeToStopSetsStrategy implements SafeToStopSetsSt
     protected abstract List<ClusterNode> orderNodes(SafeToStopSetsContext ctx);
 
     /**
+     * Maximum size of a group the strategy wants to produce. The default is the bound the configuration
+     * guarantees ({@link SafeToStopSetsSupport#maxSafeGroupSize(SafeToStopSetsContext)}: one copy less than the
+     * smallest copy bound of the snapshot groups), so a strategy that only changes the visiting order overrides
+     * {@link #orderNodes(SafeToStopSetsContext)} alone and never repeats the copy arithmetic.
+     * <p>
+     * An override narrows the default (a domain constraint allows fewer nodes together), it never widens it
+     * beyond what the configuration guarantees.
+     *
      * @param ctx Snapshot of the cluster state.
-     * @return Maximum size of a group the strategy wants to produce, at least {@code 1}.
+     * @return Maximum size of a group, at least {@code 1}; {@link Integer#MAX_VALUE} means "no limit".
      */
-    protected abstract int maxGroupSize(SafeToStopSetsContext ctx);
+    protected int maxGroupSize(SafeToStopSetsContext ctx) {
+        return SafeToStopSetsSupport.maxSafeGroupSize(ctx);
+    }
 
     /**
      * @return Whether the local search ({@link SafeToStopSetsSupport#repair}) is applied after the greedy

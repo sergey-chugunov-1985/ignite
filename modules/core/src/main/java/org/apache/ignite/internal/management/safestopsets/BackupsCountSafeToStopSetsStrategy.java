@@ -22,7 +22,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cluster.ClusterNode;
 
 /**
@@ -62,7 +61,7 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
         if (!blockers.isEmpty())
             throw new IllegalArgumentException(structureOnlyFailure(blockers));
 
-        int maxGroupSize = maxGroupSize(ctx);
+        int maxGroupSize = SafeToStopSetsSupport.maxSafeGroupSize(ctx);
 
         if (!ctx.ownershipMatchesAffinity())
             return splitByOwners(ctx);
@@ -74,45 +73,15 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
     }
 
     /**
-     * Computes the maximum size of a group that may be stopped together: one copy less than the smallest
-     * group's copy bound, so the group never holds all copies of any partition.
-     * <p>
-     * The bound of a group is {@code |affinityNodes(group)|}, not the number of server nodes: with
-     * persistence the affinity node set is restricted by the baseline, and for a {@code REPLICATED} group it
-     * is the copy set itself. For a {@code REPLICATED} group the bound is {@code |affinityNodes(group)|}
-     * without computing {@code backups + 1}: {@code backups} is {@link Integer#MAX_VALUE} there and the sum
-     * overflows.
-     *
-     * @param ctx Snapshot of the cluster state.
-     * @return Maximum size of a safe group, {@code 0} if no two nodes may be stopped together, and the
-     *      "no limit" sentinel when the snapshot has no cache group in scope: there is no copy to lose then,
-     *      so the whole cluster may be stopped at once.
-     */
-    private static int maxGroupSize(SafeToStopSetsContext ctx) {
-        int res = Integer.MAX_VALUE;
-
-        for (CacheGroupInfo grp : ctx.cacheGroups().values()) {
-            int n = ctx.affinityNodesCount(grp.name());
-
-            int bound = grp.mode() == CacheMode.REPLICATED
-                ? n
-                : Math.min(grp.backups() + 1, n);
-
-            res = Math.min(res, bound);
-        }
-
-        return res - 1;
-    }
-
-    /**
      * Deals the snapshot nodes round-robin over the groups: the number of groups is the ceiling of
      * {@code nodes / maxGroupSize}, so no group exceeds the bound, the sizes differ by at most one, and the
      * result is deterministic because the nodes are ordered by consistent ID.
      * <p>
      * The bound is clamped by the cluster size before the number of groups is computed: a snapshot without a
-     * single user cache group has no copy bound at all, so {@link #maxGroupSize(SafeToStopSetsContext)}
-     * returns its "no limit" sentinel, and {@code nodes + bound - 1} would overflow into a negative group
-     * count. One group over all nodes is the correct answer there: nothing is lost by stopping them together.
+     * single user cache group has no copy bound at all, so
+     * {@link SafeToStopSetsSupport#maxSafeGroupSize(SafeToStopSetsContext)} returns its "no limit" value, and
+     * {@code nodes + bound - 1} would overflow into a negative group count. One group over all nodes is the
+     * correct answer there: nothing is lost by stopping them together.
      *
      * @param nodes Snapshot nodes, ordered by consistent ID.
      * @param maxGroupSize Maximum size of a group, at least {@code 2}.
@@ -162,9 +131,9 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
 
         SafeToStopSetsHypergraph hg = SafeToStopSetsSupport.hypergraph(ctx);
 
-        int maxGroupSize = maxGroupSize(ctx);
+        int maxGroupSize = SafeToStopSetsSupport.maxSafeGroupSize(ctx);
 
-        if (maxGroupSize < 1)
+        if (maxGroupSize < 2)
             return SafeToStopSetsSupport.singletons(ctx.nodes());
 
         List<List<UUID>> result = SafeToStopSetsSupport.greedy(hg, ctx.nodes(), maxGroupSize);
