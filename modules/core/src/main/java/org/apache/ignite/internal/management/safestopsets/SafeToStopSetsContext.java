@@ -68,12 +68,26 @@ public interface SafeToStopSetsContext {
     List<UUID> baselineNodes();
 
     /**
+     * Options of this run, exactly as the operator gave them on the command line: a key is present with its
+     * value, and a key without a value is mapped to an empty string. The snapshot does not interpret the
+     * values: it only carries them, so a strategy reads its own options and nothing else happens to them.
+     * <p>
+     * The set of options a strategy accepts is declared by
+     * {@link SafeToStopSetsStrategy#supportedOptions()} and checked before the snapshot is taken, so an
+     * unsupported option never reaches this point.
+     *
+     * @return Option key to value mapping, ordered by key; empty when no option was given.
+     */
+    Map<String, String> strategyOptions();
+
+    /**
      * Cache group configurations of the snapshot, ordered by group name. This is the cheapest input: no
      * partition data is needed to build it.
      * <p>
-     * The mapping holds the groups in scope of the answer only: a group the operator excluded from the
-     * computation (a group without backups under {@code --no-backup}) is absent here and in every other view of
-     * the snapshot, so a strategy never has to know about the exclusion.
+     * The mapping holds the groups in scope of the answer only: a group that is excluded from the computation
+     * (by the operator under {@code --no-backup}, or by the strategy via
+     * {@link SafeToStopSetsStrategy#excludeGroups(Map, Map)}) is absent here and in every other view of the
+     * snapshot, so a strategy never has to know about the exclusion.
      *
      * @return Cache group name to configuration mapping.
      */

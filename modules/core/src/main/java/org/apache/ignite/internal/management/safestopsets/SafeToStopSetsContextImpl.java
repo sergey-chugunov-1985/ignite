@@ -84,6 +84,9 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     /** Baseline node IDs of the snapshot. */
     private final List<UUID> baselineNodes;
 
+    /** Options of this run, ordered by key; empty when the operator gave none. */
+    private final Map<String, String> strategyOptions;
+
     /** Cache group configurations, ordered by group name. */
     private final Map<String, CacheGroupInfo> cacheGroups;
 
@@ -127,7 +130,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
      * @param ignite Ignite instance to take the snapshot from.
      */
     public SafeToStopSetsContextImpl(IgniteEx ignite) {
-        this(ignite, (SafeToStopSetsNoBackupMode)null);
+        this(ignite, false, Collections.emptyMap());
     }
 
     /**
@@ -137,18 +140,40 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
      *      them.
      */
     public SafeToStopSetsContextImpl(IgniteEx ignite, @Nullable SafeToStopSetsNoBackupMode noBackupMode) {
-        this(ignite, collect(ignite, noBackupMode));
+        this(ignite, noBackupMode != null, Collections.emptyMap());
+    }
+
+    /**
+     * @param ignite Ignite instance to take the snapshot from.
+     * @param noBackup Whether the cache groups without backups leave the snapshot: they then leave every view of
+     *      it, so neither the strategies nor the verification see them.
+     * @param strategyOptions Options of this run, ordered by key; empty when the operator gave none. The
+     *      snapshot does not interpret them, it only carries them to
+     *      {@link SafeToStopSetsContext#strategyOptions()}.
+     */
+    public SafeToStopSetsContextImpl(
+        IgniteEx ignite,
+        boolean noBackup,
+        Map<String, String> strategyOptions
+    ) {
+        // The report mode itself is irrelevant here: the collector only needs to know whether the groups without
+        // backups leave the snapshot.
+        this(ignite, collect(ignite, noBackup ? SafeToStopSetsNoBackupMode.WARNING : null), strategyOptions);
     }
 
     /**
      * @param ignite Ignite instance.
      * @param snap Collected snapshot data.
+     * @param strategyOptions Options of this run, ordered by key.
      */
-    private SafeToStopSetsContextImpl(IgniteEx ignite, Snapshot snap) {
+    private SafeToStopSetsContextImpl(IgniteEx ignite, Snapshot snap, Map<String, String> strategyOptions) {
         this.ignite = ignite;
         this.startTopVer = snap.startTopVer;
         this.nodes = snap.nodes;
         this.baselineNodes = snap.baselineNodes;
+        this.strategyOptions = strategyOptions.isEmpty()
+            ? Collections.emptyMap()
+            : Collections.unmodifiableMap(new LinkedHashMap<>(strategyOptions));
         this.cacheGroups = snap.cacheGroups;
         this.grpCtxs = snap.grpCtxs;
         this.affByGrpId = snap.affByGrpId;
@@ -181,6 +206,11 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     /** {@inheritDoc} */
     @Override public List<UUID> baselineNodes() {
         return baselineNodes;
+    }
+
+    /** {@inheritDoc} */
+    @Override public Map<String, String> strategyOptions() {
+        return strategyOptions;
     }
 
     /** {@inheritDoc} */
@@ -303,7 +333,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
      *      by name; empty when the exclusion was not requested or no group matched. The answer does not cover
      *      these groups: their partitions are not read and are not part of {@link #partitionOwners()}.
      */
-    public List<String> excludedNoBackupGroups() {
+    List<String> excludedNoBackupGroups() {
         return excludedNoBackupGroups;
     }
 

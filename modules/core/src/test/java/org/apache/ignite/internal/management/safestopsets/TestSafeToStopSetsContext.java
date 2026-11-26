@@ -149,6 +149,11 @@ final class TestSafeToStopSetsContext implements SafeToStopSetsContext {
     }
 
     /** {@inheritDoc} */
+    @Override public Map<String, String> strategyOptions() {
+        return Collections.emptyMap();
+    }
+
+    /** {@inheritDoc} */
     @Override public Map<String, CacheGroupInfo> cacheGroups() {
         return groups;
     }

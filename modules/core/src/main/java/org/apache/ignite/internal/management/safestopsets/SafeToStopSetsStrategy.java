@@ -17,7 +17,10 @@
 
 package org.apache.ignite.internal.management.safestopsets;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.apache.ignite.lang.IgniteExperimental;
 
@@ -56,6 +59,49 @@ public interface SafeToStopSetsStrategy {
      */
     default String description() {
         return name();
+    }
+
+    /**
+     * Options the strategy understands, passed by the operator via {@code --strategy-options}. The core checks
+     * the given options against this set before the snapshot is taken, so an option that is not declared here
+     * is rejected with an {@link IllegalArgumentException} and exit code 1 without any cluster read.
+     * <p>
+     * The values of the options are never interpreted by the core: they are only checked for syntax and carried
+     * to the strategy in {@link SafeToStopSetsContext#strategyOptions()}.
+     *
+     * @return Names of the supported options, empty when the strategy takes no option.
+     */
+    default Set<String> supportedOptions() {
+        return Collections.emptySet();
+    }
+
+    /**
+     * Groups the strategy refuses to cover, computed from the options and from the group configurations. The
+     * returned map is a declaration, not a modification of the snapshot: the core applies it before the
+     * snapshot is built, so the groups leave the snapshot entirely and are neither split nor verified.
+     * <p>
+     * The invocation happens once, before any affinity or partition data is read, therefore only the
+     * configuration of a group is available here: {@link CacheGroupInfo#name()}, {@link CacheGroupInfo#mode()},
+     * {@link CacheGroupInfo#backups()}, {@link CacheGroupInfo#lossPolicy()} and
+     * {@link CacheGroupInfo#affinityBackupFilter()}. The filter must be a pure function of these arguments and
+     * must not depend on the number of affinity nodes or on the placement of the copies — neither is known at
+     * this point, and an exclusion that could only be justified by the layout would be a guess.
+     * <p>
+     * An excluded group is no longer protected by this run: the answer does not cover it, the verification does
+     * not check it, and every exclusion is printed to the operator with the reason given here. Excluding a group
+     * can therefore turn a rejected answer into an accepted one, which is exactly why the reason must be
+     * specific.
+     *
+     * @param options Options of this run, as given on the command line and validated against
+     *      {@link #supportedOptions()}.
+     * @param groups Configurations of the groups in scope, ordered by group name.
+     * @return Group name to the reason why the group is excluded, empty to keep every group.
+     * @throws IllegalArgumentException If the strategy refuses to answer for the given options; the message is
+     *      reported to the operator with exit code 1. Any other exception is reported as an internal error (exit
+     *      code 4) and must be reserved for genuine faults.
+     */
+    default Map<String, String> excludeGroups(Map<String, String> options, Map<String, CacheGroupInfo> groups) {
+        return Collections.emptyMap();
     }
 
     /**

@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,9 +31,9 @@ import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.lang.IgniteExperimental;
 
 /**
- * The common building blocks of the safe-to-stop-sets calculation: the owner hypergraph, the greedy pass,
- * the local search and the verification. Static methods, no state, deterministic: the same snapshot always
- * produces the same result, on any node of the cluster, byte for byte.
+ * The common building blocks of the safe-to-stop-sets calculation: the exclusions declared by a strategy, the
+ * owner hypergraph, the greedy pass, the local search and the verification. Static methods, no state,
+ * deterministic: the same snapshot always produces the same result, on any node of the cluster, byte for byte.
  * <p>
  * Safety is not a property of any single block: the greedy pass and the local search only ever return safe
  * groups (they never create a group that contains an edge), and the verification re-checks the final result
@@ -43,6 +44,72 @@ public final class SafeToStopSetsSupport {
     /** */
     private SafeToStopSetsSupport() {
         // No instances.
+    }
+
+    /**
+     * Validates the exclusions declared by the strategy and turns them into the mapping the snapshot builder
+     * merges with the exclusions of the operator.
+     * <p>
+     * The declaration is only a declaration: the collections of the snapshot are unmodifiable and reachable
+     * only through getters, so a strategy cannot remove a group itself. The core applies the declaration before
+     * the snapshot is built, therefore an excluded group is absent from every view of the snapshot and is
+     * neither split nor verified.
+     * <p>
+     * The declaration is checked strictly, because a broken one silently changes the scope of the answer: a
+     * group that is not in {@code groups} means that the strategy and the core disagree about the scope, and an
+     * empty reason would hide the exclusion from the report. Both are bugs of the implementation, so the
+     * failure is an {@link IllegalStateException} — an internal error, not a wrong command line.
+     *
+     * @param strategy Strategy that declares the exclusions.
+     * @param options Options of this run, as given on the command line.
+     * @param groups Configurations of the groups in scope, ordered by group name.
+     * @return Group name to the declared reason, a subset of {@code groups}, ordered by group name; empty when
+     *      the strategy excludes nothing.
+     * @throws IllegalStateException If the declaration names an unknown group, omits the reason or is
+     *      {@code null}.
+     */
+    public static Map<String, String> applyExclusions(
+        SafeToStopSetsStrategy strategy,
+        Map<String, String> options,
+        Map<String, CacheGroupInfo> groups
+    ) {
+        Map<String, String> declared = strategy.excludeGroups(options, groups);
+
+        if (declared == null) {
+            throw new IllegalStateException("Strategy \"" + strategy.name() +
+                "\" returned null instead of the excluded cache groups");
+        }
+
+        if (declared.isEmpty())
+            return Collections.emptyMap();
+
+        for (Map.Entry<String, String> entry : declared.entrySet()) {
+            String grpName = entry.getKey();
+
+            if (grpName == null || !groups.containsKey(grpName)) {
+                throw new IllegalStateException("Strategy \"" + strategy.name() + "\" excluded an unknown cache group " +
+                    "[group=" + grpName + ", known=" + groups.keySet() + ']');
+            }
+
+            if (entry.getValue() == null || entry.getValue().trim().isEmpty()) {
+                throw new IllegalStateException("Strategy \"" + strategy.name() + "\" excluded a cache group " +
+                    "without a reason [group=" + grpName + ']');
+            }
+        }
+
+        // The declaration is re-projected onto the groups, so neither the order nor the map type chosen by the
+        // strategy can leak into the snapshot or into the report.
+
+        Map<String, String> res = new LinkedHashMap<>();
+
+        for (String grpName : groups.keySet()) {
+            String reason = declared.get(grpName);
+
+            if (reason != null)
+                res.put(grpName, reason);
+        }
+
+        return Collections.unmodifiableMap(res);
     }
 
     /**

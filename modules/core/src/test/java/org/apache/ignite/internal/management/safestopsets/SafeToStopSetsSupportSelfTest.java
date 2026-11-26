@@ -32,11 +32,13 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests the common engine ({@link SafeToStopSetsSupport}, {@link SafeToStopSetsHypergraph},
- * {@link SafeToStopSetsVerification}) without a cluster: the hypergraph's deduplication and dominated-edge
- * removal, the greedy and repair passes, and the verification's levels, order and failure semantics.
+ * {@link SafeToStopSetsVerification}) without a cluster: the exclusions declared by a strategy, the hypergraph's
+ * deduplication and dominated-edge removal, the greedy and repair passes, and the verification's levels, order
+ * and failure semantics.
  */
 public class SafeToStopSetsSupportSelfTest {
     /** Name of the group used in the configuration. */
@@ -659,8 +661,201 @@ public class SafeToStopSetsSupportSelfTest {
     }
 
     // ---------------------------------------------------------------------
+    // Strategy exclusions
+    // ---------------------------------------------------------------------
+
+    /**
+     * The declaration is re-projected onto the given groups: the result is ordered by group name, whatever the
+     * order and the map type the strategy chose, and neither the declaration nor the input groups are modified.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testApplyExclusionsProjectsOntoGroups() throws Exception {
+        Map<String, CacheGroupInfo> groups = groups("a", "b", "c");
+
+        Map<String, String> declared = new LinkedHashMap<>();
+        declared.put("c", "no cell");
+        declared.put("a", "no cell");
+
+        ExcludingStrategy strategy = new ExcludingStrategy(declared);
+
+        Map<String, String> res = SafeToStopSetsSupport.applyExclusions(strategy, options("skip", ""), groups);
+
+        assertEquals("The result is ordered by group name", Arrays.asList("a", "c"), new ArrayList<>(res.keySet()));
+        assertEquals("no cell", res.get("a"));
+
+        assertEquals("The strategy must see the options of the run", options("skip", ""), strategy.seenOptions);
+        assertEquals("The strategy must see the groups as they are", groups, strategy.seenGroups);
+        assertEquals("The declaration of the strategy must not be modified", declared, strategy.declared);
+        assertEquals("The input groups must not be modified", Arrays.asList("a", "b", "c"), new ArrayList<>(groups.keySet()));
+    }
+
+    /**
+     * A strategy that declares nothing keeps every group: the default implementation of the SPI is silent.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testApplyExclusionsDefaultStrategyExcludesNothing() throws Exception {
+        Map<String, String> res = SafeToStopSetsSupport.applyExclusions(
+            new TestOwnersSafeToStopSetsStrategy(), Collections.emptyMap(), groups(GRP));
+
+        assertTrue("A strategy without exclusions must not narrow the snapshot", res.isEmpty());
+
+        Map<String, String> empty = SafeToStopSetsSupport.applyExclusions(
+            new ExcludingStrategy(Collections.emptyMap()), Collections.emptyMap(), groups(GRP));
+
+        assertTrue("An empty declaration must not narrow the snapshot", empty.isEmpty());
+    }
+
+    /**
+     * A group outside the snapshot scope means that the strategy and the core disagree about the scope, which is
+     * a bug of the implementation: an internal error, not a usage error of the operator.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testApplyExclusionsRejectsUnknownGroup() throws Exception {
+        try {
+            SafeToStopSetsSupport.applyExclusions(
+                new ExcludingStrategy(Collections.singletonMap("zzz", "no cell")), Collections.emptyMap(), groups("a"));
+
+            fail("A group outside the snapshot scope must be an internal error");
+        }
+        catch (IllegalStateException expected) {
+            String msg = expected.getMessage();
+
+            assertTrue(msg, msg.contains("excluding"));
+            assertTrue(msg, msg.contains("zzz"));
+        }
+    }
+
+    /**
+     * An exclusion without a reason would hide itself from the report, so it is rejected instead of printed as
+     * an empty line.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testApplyExclusionsRejectsMissingReason() throws Exception {
+        try {
+            SafeToStopSetsSupport.applyExclusions(
+                new ExcludingStrategy(Collections.singletonMap("a", "  ")), Collections.emptyMap(), groups("a"));
+
+            fail("An exclusion without a reason must be an internal error");
+        }
+        catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("without a reason"));
+        }
+    }
+
+    /**
+     * A {@code null} declaration is a broken implementation, not "nothing to exclude": the difference between
+     * the two must not be guessed.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testApplyExclusionsRejectsNullDeclaration() throws Exception {
+        try {
+            SafeToStopSetsSupport.applyExclusions(
+                new ExcludingStrategy(null), Collections.emptyMap(), groups("a"));
+
+            fail("A null declaration must be an internal error");
+        }
+        catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("returned null"));
+        }
+    }
+
+    /**
+     * The applied exclusions are stored in the snapshot, so they must be immutable.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testApplyExclusionsResultIsImmutable() throws Exception {
+        Map<String, String> res = SafeToStopSetsSupport.applyExclusions(
+            new ExcludingStrategy(Collections.singletonMap("a", "no cell")), Collections.emptyMap(), groups("a"));
+
+        try {
+            res.put("b", "added");
+
+            fail("The exclusions of the snapshot must be immutable");
+        }
+        catch (UnsupportedOperationException ignored) {
+            // Expected.
+        }
+    }
+
+    /** Strategy that declares the given exclusions and records the arguments of the filter. */
+    private static class ExcludingStrategy implements SafeToStopSetsStrategy {
+        /** Exclusion to declare, {@code null} to simulate a broken implementation. */
+        private final Map<String, String> declared;
+
+        /** Options seen by the filter. */
+        private Map<String, String> seenOptions;
+
+        /** Groups seen by the filter. */
+        private Map<String, CacheGroupInfo> seenGroups;
+
+        /**
+         * @param declared Exclusion to declare, {@code null} to simulate a broken implementation.
+         */
+        ExcludingStrategy(Map<String, String> declared) {
+            this.declared = declared;
+        }
+
+        /** {@inheritDoc} */
+        @Override public String name() {
+            return "excluding";
+        }
+
+        /** {@inheritDoc} */
+        @Override public List<List<UUID>> split(SafeToStopSetsContext ctx) {
+            throw new AssertionError("The exclusions must be applied before the split");
+        }
+
+        /** {@inheritDoc} */
+        @Override public Map<String, String> excludeGroups(
+            Map<String, String> options,
+            Map<String, CacheGroupInfo> groups
+        ) {
+            seenOptions = options;
+            seenGroups = groups;
+
+            return declared;
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------
+
+    /**
+     * @param names Group names, in the order of the map.
+     * @return Configurations of {@code PARTITIONED} groups with one backup.
+     */
+    private static Map<String, CacheGroupInfo> groups(String... names) {
+        Map<String, CacheGroupInfo> res = new LinkedHashMap<>();
+
+        for (String name : names) {
+            res.put(name, new CacheGroupInfo(name, CacheMode.PARTITIONED, 1,
+                PartitionLossPolicy.READ_WRITE_SAFE, null));
+        }
+
+        return res;
+    }
+
+    /**
+     * @param key Option key.
+     * @param val Option value.
+     * @return One-element options map.
+     */
+    private static Map<String, String> options(String key, String val) {
+        return Collections.singletonMap(key, val);
+    }
 
     /**
      * @param n Number of nodes.
