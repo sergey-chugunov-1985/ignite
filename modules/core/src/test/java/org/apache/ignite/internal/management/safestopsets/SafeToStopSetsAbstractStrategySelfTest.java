@@ -238,7 +238,7 @@ public class SafeToStopSetsAbstractStrategySelfTest {
      * @return Partitioned group configuration.
      */
     private static CacheGroupInfo grp(String name, int backups) {
-        return new CacheGroupInfo(name, CacheMode.PARTITIONED, backups, PartitionLossPolicy.READ_WRITE_SAFE);
+        return new CacheGroupInfo(name, CacheMode.PARTITIONED, backups, PartitionLossPolicy.READ_WRITE_SAFE, null);
     }
 
     /**
@@ -247,7 +247,7 @@ public class SafeToStopSetsAbstractStrategySelfTest {
      *      configuration.
      */
     private static CacheGroupInfo repl(String name) {
-        return new CacheGroupInfo(name, CacheMode.REPLICATED, Integer.MAX_VALUE, PartitionLossPolicy.READ_WRITE_SAFE);
+        return new CacheGroupInfo(name, CacheMode.REPLICATED, Integer.MAX_VALUE, PartitionLossPolicy.READ_WRITE_SAFE, null);
     }
 
     /**

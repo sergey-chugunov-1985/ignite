@@ -19,7 +19,11 @@ package org.apache.ignite.internal.management.safestopsets;
 
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.PartitionLossPolicy;
+import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.apache.ignite.lang.IgniteBiPredicate;
+
+import java.util.List;
 
 /**
  * Immutable per-group cache configuration of a snapshot.
@@ -37,17 +41,24 @@ public final class CacheGroupInfo {
     /** Partition loss policy. */
     private final PartitionLossPolicy lossPolicy;
 
+    /** Affinity backup filter as configured, or {@code null}. */
+    private final IgniteBiPredicate<ClusterNode, List<ClusterNode>> affinityBackupFilter;
+
     /**
      * @param name Cache group name.
      * @param mode Cache mode.
      * @param backups Number of backups as it is stored in the configuration.
      * @param lossPolicy Partition loss policy.
+     * @param affinityBackupFilter Affinity backup filter as configured, or {@code null} if absent or the
+     *      affinity is not {@code RendezvousAffinityFunction}.
      */
-    public CacheGroupInfo(String name, CacheMode mode, int backups, PartitionLossPolicy lossPolicy) {
+    public CacheGroupInfo(String name, CacheMode mode, int backups, PartitionLossPolicy lossPolicy,
+        IgniteBiPredicate<ClusterNode, List<ClusterNode>> affinityBackupFilter) {
         this.name = name;
         this.mode = mode;
         this.backups = backups;
         this.lossPolicy = lossPolicy;
+        this.affinityBackupFilter = affinityBackupFilter;
     }
 
     /**
@@ -81,6 +92,17 @@ public final class CacheGroupInfo {
      */
     public PartitionLossPolicy lossPolicy() {
         return lossPolicy;
+    }
+
+    /**
+     * The affinity backup filter as configured via {@code RendezvousAffinityFunction.setAffinityBackupFilter}.
+     * The core does not interpret the filter; a strategy that needs to distinguish cache groups by their
+     * affinity-to-attribute binding (cell, data center) examines the returned object directly.
+     *
+     * @return The filter, or {@code null} if it is absent or the affinity is not {@code RendezvousAffinityFunction}.
+     */
+    public IgniteBiPredicate<ClusterNode, List<ClusterNode>> affinityBackupFilter() {
+        return affinityBackupFilter;
     }
 
     /** {@inheritDoc} */

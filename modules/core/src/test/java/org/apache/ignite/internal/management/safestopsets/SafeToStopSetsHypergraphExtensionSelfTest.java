@@ -502,7 +502,7 @@ public class SafeToStopSetsHypergraphExtensionSelfTest {
      */
     private static TestSafeToStopSetsContext ctx(List<UUID> nodes, List<PartitionOwners> owners) {
         Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
-        groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, 1, PartitionLossPolicy.READ_WRITE_SAFE));
+        groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, 1, PartitionLossPolicy.READ_WRITE_SAFE, null));
 
         return new TestSafeToStopSetsContext(nodes, groups, new LinkedHashMap<>(), owners);
     }

@@ -45,6 +45,7 @@ import org.apache.ignite.internal.processors.cache.distributed.dht.topology.Grid
 import org.apache.ignite.internal.processors.cluster.DiscoveryDataClusterState;
 import org.apache.ignite.internal.processors.metastorage.DistributedMetaStorage;
 import org.apache.ignite.internal.util.typedef.internal.CU;
+import org.apache.ignite.lang.IgniteBiPredicate;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -547,8 +548,14 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
             CacheConfiguration<?, ?> ccfg = grp.config();
 
+            IgniteBiPredicate<ClusterNode, List<ClusterNode>> affBackupFilter = null;
+
+            if (ccfg.getAffinity() instanceof RendezvousAffinityFunction)
+                affBackupFilter = ((RendezvousAffinityFunction) ccfg.getAffinity()).getAffinityBackupFilter();
+
             infos.put(grpName,
-                new CacheGroupInfo(grpName, ccfg.getCacheMode(), ccfg.getBackups(), ccfg.getPartitionLossPolicy()));
+                new CacheGroupInfo(grpName, ccfg.getCacheMode(), ccfg.getBackups(),
+                    ccfg.getPartitionLossPolicy(), affBackupFilter));
 
             // A pure function of the configuration, so it is evaluated for every group, ready or not:
             // the configuration path is either legal or not, independent of the topology state.

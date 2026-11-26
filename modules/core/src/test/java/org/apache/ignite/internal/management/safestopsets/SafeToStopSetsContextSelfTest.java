@@ -211,6 +211,7 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
         assertEquals(CacheMode.REPLICATED, info.mode());
         assertTrue("Unexpected number of backups: " + info.backups(), info.backups() == Integer.MAX_VALUE);
         assertEquals(PartitionLossPolicy.READ_WRITE_SAFE, info.lossPolicy());
+        assertNull("No affinity backup filter configured, expected null", info.affinityBackupFilter());
 
         List<PartitionOwners> owners = groupOwners(ctx, REPL_CACHE_NAME);
 
@@ -293,6 +294,11 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
         assertTrue(blockers.get(CACHE_NAME), blockers.get(CACHE_NAME).contains("not RendezvousAffinityFunction"));
         assertTrue(blockers.get(REPL_CACHE_NAME),
             blockers.get(REPL_CACHE_NAME).contains("copy filters are set without excludeNeighbors"));
+
+        assertNull("Custom affinity, not Rendezvous, expected null filter",
+            ctx.cacheGroups().get(CACHE_NAME).affinityBackupFilter());
+        assertNotNull("Rendezvous with filter, expected non-null filter",
+            ctx.cacheGroups().get(REPL_CACHE_NAME).affinityBackupFilter());
     }
 
     /**

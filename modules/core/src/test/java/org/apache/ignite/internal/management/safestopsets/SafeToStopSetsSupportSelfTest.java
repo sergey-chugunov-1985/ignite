@@ -547,7 +547,7 @@ public class SafeToStopSetsSupportSelfTest {
 
         Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
         groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.REPLICATED, Integer.MAX_VALUE,
-            PartitionLossPolicy.READ_WRITE_SAFE));
+            PartitionLossPolicy.READ_WRITE_SAFE, null));
 
         TestSafeToStopSetsContext ctx = new TestSafeToStopSetsContext(nodes, groups,
             Collections.singletonMap(GRP, 4), Collections.emptyList());
@@ -724,7 +724,7 @@ public class SafeToStopSetsSupportSelfTest {
      */
     private static TestSafeToStopSetsContext ctx(List<UUID> nodes, List<PartitionOwners> owners, int backups) {
         Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
-        groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, backups, PartitionLossPolicy.READ_WRITE_SAFE));
+        groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, backups, PartitionLossPolicy.READ_WRITE_SAFE, null));
 
         return new TestSafeToStopSetsContext(nodes, groups, new LinkedHashMap<>(), owners);
     }
