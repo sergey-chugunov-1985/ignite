@@ -71,6 +71,10 @@ public final class SafeToStopSetsSupport {
      * to lose, the whole cluster may be stopped at once), and {@code 1} when the smallest group has a single
      * copy (no two nodes may be stopped together, every node is a group of its own). There is no other sentinel:
      * a group of one node is always safe.
+     * <p>
+     * This is also the bound the verification enforces on a structure-only answer: a strategy that did not read
+     * the partition owners may not produce a group larger than this, because the copy count of the
+     * configuration is the only safety argument available without the layout.
      *
      * @param ctx Snapshot of the cluster state.
      * @return Maximum size of a safe group, at least {@code 1}; {@link Integer#MAX_VALUE} means "no limit".
@@ -202,6 +206,14 @@ public final class SafeToStopSetsSupport {
      * a result that was not checked against the actual layout is marked {@code STRUCTURE_ONLY} with the
      * reason, never printed silently, and is rejected when the context does not allow a structure-only
      * answer.
+     * <p>
+     * A structure-only answer is accepted only within the group size bound the configuration guarantees
+     * ({@link #maxSafeGroupSize(SafeToStopSetsContext)}): the copy count of a group is a property of the
+     * configuration, so a group that respects the bound keeps at least one live copy of every partition
+     * whatever the layout is. The size bound is the only thing a structure-only answer can prove: it says
+     * nothing about <em>where</em> the copies live, so a strategy whose constraint depends on the placement
+     * (a cell, a data center, an affinity filter) has to read the partition owners and accept the semantic
+     * level instead of relying on the configuration bound.
      *
      * @param grps Candidate partition of the snapshot nodes.
      * @param ctx Snapshot of the cluster state.
@@ -240,14 +252,25 @@ public final class SafeToStopSetsSupport {
         if (!ctx.ownersRead()) {
             Map<String, String> blockers = ctx.structureOnlyBlockers();
 
-            if (blockers.isEmpty() && ctx.ownershipMatchesAffinity())
+            if (blockers.isEmpty() && ctx.ownershipMatchesAffinity()) {
+                List<String> oversized = oversizedGroups(grps, maxSafeGroupSize(ctx));
+
+                if (oversized.isEmpty())
+                    return new SafeToStopSetsVerification(
+                        true,
+                        SafeToStopSetsVerification.Mode.STRUCTURE_ONLY,
+                        Collections.emptyList(),
+                        Collections.singletonList(
+                            "The partition owners were not read: the answer is derived from the configuration "
+                                + "only (rendezvous affinity, no copy filters, ownership matches the affinity, "
+                                + "every group within the safe size bound)"));
+
                 return new SafeToStopSetsVerification(
-                    true,
-                    SafeToStopSetsVerification.Mode.STRUCTURE_ONLY,
-                    Collections.emptyList(),
-                    Collections.singletonList(
-                        "The partition owners were not read: the answer is derived from the configuration "
-                            + "only (rendezvous affinity, no copy filters, ownership matches the affinity)"));
+                    false,
+                    SafeToStopSetsVerification.Mode.UNPROVABLE,
+                    oversized,
+                    Collections.emptyList());
+            }
 
             List<String> reasons = new ArrayList<>();
 
@@ -285,6 +308,38 @@ public final class SafeToStopSetsSupport {
             SafeToStopSetsVerification.Mode.EXACT,
             Collections.emptyList(),
             Collections.emptyList());
+    }
+
+    /**
+     * The size level of a structure-only answer: without the partition owners the only safety argument left is
+     * the copy count of the configuration, so every group must fit into
+     * {@link #maxSafeGroupSize(SafeToStopSetsContext)}. A group that does not fit may hold a whole owner set of
+     * a partition with fewer copies than the bound assumes, which is exactly the loss the answer claims to
+     * prevent. The check is {@code O(#groups)}: it reads the configuration only, so the structure-only fast
+     * path stays free of the layout read.
+     *
+     * @param grps Candidate partition of the snapshot nodes, already structurally verified.
+     * @param maxGroupSize The largest group the configuration proves safe.
+     * @return Empty when every group respects the bound, otherwise one human readable reason per offending
+     *      group.
+     */
+    private static List<String> oversizedGroups(List<List<UUID>> grps, int maxGroupSize) {
+        if (maxGroupSize == Integer.MAX_VALUE)
+            return Collections.emptyList();
+
+        List<String> res = new ArrayList<>();
+
+        for (int i = 0; i < grps.size(); i++) {
+            int size = grps.get(i).size();
+
+            if (size > maxGroupSize)
+                res.add("Group #" + i + " of " + size + " node(s) exceeds the largest group the configuration "
+                    + "proves safe (" + maxGroupSize + "): the answer was not checked against the actual "
+                    + "layout, so the strategy must read the partition owners instead of assuming the copy "
+                    + "count of the configuration");
+        }
+
+        return res;
     }
 
     /**

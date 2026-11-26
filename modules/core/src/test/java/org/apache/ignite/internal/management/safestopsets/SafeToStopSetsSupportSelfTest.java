@@ -484,8 +484,8 @@ public class SafeToStopSetsSupportSelfTest {
     // ---------------------------------------------------------------------
 
     /**
-     * When the owners were not read and the configuration allows it (no blockers, ownership matches the
-     * affinity), the answer is marked {@code STRUCTURE_ONLY} with a reason, never printed silently.
+     * When the owners were not read, the configuration allows a structure-only answer, and every group fits
+     * into the configuration's size bound, the answer is marked {@code STRUCTURE_ONLY} with a reason.
      *
      * @throws Exception If failed.
      */
@@ -493,7 +493,8 @@ public class SafeToStopSetsSupportSelfTest {
     public void testVerifyStructureOnly() throws Exception {
         List<UUID> nodes = ids(4);
 
-        TestSafeToStopSetsContext ctx = ctx(nodes, Collections.emptyList());
+        // backups = 3: copies = 4, maxSafeGroupSize = 3; groups of 2 are within the bound.
+        TestSafeToStopSetsContext ctx = ctx(nodes, Collections.emptyList(), 3);
 
         SafeToStopSetsVerification ver = SafeToStopSetsSupport.verify(
             Arrays.asList(Arrays.asList(nodes.get(0), nodes.get(1)),
@@ -503,6 +504,82 @@ public class SafeToStopSetsSupportSelfTest {
         assertEquals(SafeToStopSetsVerification.Mode.STRUCTURE_ONLY, ver.mode());
         assertFalse(ver.failed());
         assertFalse("The structure-only reason must be present", ver.notVerified().isEmpty());
+    }
+
+    /**
+     * A group that exceeds the size bound the configuration guarantees cannot be proved safe without reading
+     * the partition owners: the verification must refuse with {@code UNPROVABLE} instead of returning a
+     * valid structure-only answer. This is the regression for the C3 defect (a trivial strategy returning
+     * the whole cluster as one group must not be accepted).
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testVerifyStructureOnlyOversizedGroupIsUnprovable() throws Exception {
+        List<UUID> nodes = ids(4);
+
+        // backups = 1: copies = 2, maxSafeGroupSize = 1; a group of 4 nodes exceeds the bound.
+        TestSafeToStopSetsContext ctx = ctx(nodes, Collections.emptyList(), 1);
+
+        SafeToStopSetsVerification ver = SafeToStopSetsSupport.verify(
+            Collections.singletonList(new ArrayList<>(nodes)), ctx);
+
+        assertFalse("A group that exceeds the configuration bound must be refused", ver.valid());
+        assertTrue(ver.failed());
+        assertEquals(SafeToStopSetsVerification.Mode.UNPROVABLE, ver.mode());
+        assertFalse("The refusal must carry a readable reason", ver.violations().isEmpty());
+        assertTrue(ver.violations().toString(),
+            ver.violations().get(0).contains("Group #0"));
+        assertTrue(ver.violations().toString(),
+            ver.violations().get(0).contains("4"));
+    }
+
+    /**
+     * For a {@code REPLICATED} group the copy set is the affinity node set; {@code backups} is
+     * {@link Integer#MAX_VALUE} there and the bound must be computed without overflow. A group within the
+     * bound is a valid structure-only answer.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testVerifyStructureOnlyReplicatedWithinBound() throws Exception {
+        List<UUID> nodes = ids(6);
+
+        Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
+        groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.REPLICATED, Integer.MAX_VALUE,
+            PartitionLossPolicy.READ_WRITE_SAFE));
+
+        TestSafeToStopSetsContext ctx = new TestSafeToStopSetsContext(nodes, groups,
+            Collections.singletonMap(GRP, 4), Collections.emptyList());
+
+        // copies = |affinityNodes| = 4, maxSafeGroupSize = 3; groups of 2 are within the bound.
+        SafeToStopSetsVerification ver = SafeToStopSetsSupport.verify(
+            Arrays.asList(Arrays.asList(nodes.get(0), nodes.get(1)),
+                Arrays.asList(nodes.get(2), nodes.get(3)),
+                Arrays.asList(nodes.get(4), nodes.get(5))), ctx);
+
+        assertTrue("A group within the REPLICATED bound must be accepted", ver.valid());
+        assertEquals(SafeToStopSetsVerification.Mode.STRUCTURE_ONLY, ver.mode());
+    }
+
+    /**
+     * A snapshot with no cache groups has no copy to lose: the bound is "no limit" and any group list is a
+     * valid structure-only answer, provided the structure is correct.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testVerifyStructureOnlyNoCacheGroups() throws Exception {
+        List<UUID> nodes = ids(4);
+
+        TestSafeToStopSetsContext ctx = new TestSafeToStopSetsContext(
+            nodes, new LinkedHashMap<>(), new LinkedHashMap<>(), Collections.emptyList());
+
+        SafeToStopSetsVerification ver = SafeToStopSetsSupport.verify(
+            Collections.singletonList(new ArrayList<>(nodes)), ctx);
+
+        assertTrue("With no cache groups the whole cluster may be stopped at once", ver.valid());
+        assertEquals(SafeToStopSetsVerification.Mode.STRUCTURE_ONLY, ver.mode());
     }
 
     /**
@@ -636,8 +713,18 @@ public class SafeToStopSetsSupportSelfTest {
      * @return Fake snapshot with the one {@code PARTITIONED} group.
      */
     private static TestSafeToStopSetsContext ctx(List<UUID> nodes, List<PartitionOwners> owners) {
+        return ctx(nodes, owners, 1);
+    }
+
+    /**
+     * @param nodes Node IDs, in snapshot order.
+     * @param owners Partition owners.
+     * @param backups Number of backups of the group.
+     * @return Fake snapshot with the one {@code PARTITIONED} group.
+     */
+    private static TestSafeToStopSetsContext ctx(List<UUID> nodes, List<PartitionOwners> owners, int backups) {
         Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
-        groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, 1, PartitionLossPolicy.READ_WRITE_SAFE));
+        groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, backups, PartitionLossPolicy.READ_WRITE_SAFE));
 
         return new TestSafeToStopSetsContext(nodes, groups, new LinkedHashMap<>(), owners);
     }

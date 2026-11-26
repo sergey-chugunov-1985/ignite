@@ -29,9 +29,20 @@ import org.apache.ignite.lang.IgniteExperimental;
  * must have a public no-arg constructor and must be stateless and deterministic: the same context must always
  * produce the same result.
  * <p>
- * Safety itself is not the responsibility of the implementation: the result is always verified by the core
- * against the actual partition owners. A strategy can only affect the quality (group sizes, number of
- * singletons), never the safety.
+ * Safety itself is not the responsibility of the implementation: the result is always verified by the core —
+ * against the actual partition owners, or, when the strategy did not read them, against the copy bound of the
+ * configuration. A strategy can only affect the quality (group sizes, number of singletons), never the safety.
+ * <p>
+ * A strategy may skip the owner read only when the configuration allows a structure-only answer
+ * ({@code ctx.structureOnlyBlockers()} is empty, {@code ctx.ownershipMatchesAffinity()} is true and
+ * {@code ctx.partitionOwnersAvailable()} holds). The core then accepts the result only if every group fits into
+ * {@code SafeToStopSetsSupport.maxSafeGroupSize(ctx)}: the copy count of the configuration is the only safety
+ * argument available without the layout. A strategy whose argument depends on the placement of the copies (a
+ * cell, a data center, an affinity filter) must read the partition owners — the size bound says nothing about
+ * where the copies live, and skipping the read would weaken the verification instead of improving the quality.
+ * <p>
+ * The three conditions are necessary, not sufficient: reading the owners is always allowed and always the
+ * stronger option.
  *
  * @see SafeToStopSetsCommandArg#strategy()
  */
@@ -51,6 +62,11 @@ public interface SafeToStopSetsStrategy {
      * Called only when the snapshot is usable: {@code ctx.partitionOwnersAvailable()} is true. The result is
      * meaningful only if {@code ctx.topologyStable()} still holds afterwards; the task checks this and fails
      * with a computation error instead of printing groups.
+     * <p>
+     * An implementation that has not read the partition owners gets a structure-only verification: every group
+     * must fit into {@code SafeToStopSetsSupport.maxSafeGroupSize(ctx)}, otherwise the result is refused as
+     * {@code UNPROVABLE}. Only a strategy that reads the owners may exceed the configuration bound, because
+     * only the actual layout can justify a bigger group.
      *
      * @param ctx Immutable read-only snapshot of the cluster state at a fixed topology version.
      * @return Exact partition of {@code ctx.nodes()} into groups: every node appears exactly once, no empty

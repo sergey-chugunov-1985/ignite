@@ -27,13 +27,22 @@ import org.apache.ignite.lang.IgniteExperimental;
  * <p>
  * The {@link #mode()} tells the operator what was actually checked: {@code EXACT} — the group list was
  * verified against the actual partition owners; {@code STRUCTURE_ONLY} — the group list was checked for
- * structural correctness (coverage, no duplicates, no empty groups) only, because the context does not
- * carry partition owners (the answer is still safe by construction, but the core could not prove it — the
- * reasons are in {@link #notVerified()}). {@code NOT_READY}, {@code UNSTABLE} and {@code UNPROVABLE} are
- * failures: the command must not print any groups.
+ * structural correctness (coverage, no duplicates, no empty groups) and for the group size bound the
+ * configuration guarantees, without reading the partition owners (the strategy did not read them, and the
+ * configuration allows it: rendezvous affinity, no copy filters, ownership matches the affinity). The answer
+ * is safe by construction — a group within the copy bound never holds all copies of a partition — but it was
+ * not proven against the actual layout, so the reasons are in {@link #notVerified()}.
+ * {@code NOT_READY}, {@code UNSTABLE} and {@code UNPROVABLE} are failures: the command must not print any
+ * groups.
  * <p>
  * {@code UNPROVABLE} is a strategy fault, not a cluster fault: a strategy produced a group list without
- * reading partition owners on a context that does not allow a structure-only answer.
+ * reading the partition owners on a context that does not allow a structure-only answer, or its groups exceed
+ * the size bound the configuration proves, or the list is structurally broken or holds a whole owner set.
+ * <p>
+ * The size bound is the whole of what {@code STRUCTURE_ONLY} can prove: it constrains the number of copies a
+ * group may take, not their placement. A strategy whose safety argument depends on the layout (a cell, a data
+ * center, an affinity filter) must therefore read the partition owners and accept {@code EXACT} instead of
+ * relying on the configuration bound.
  */
 @IgniteExperimental
 public final class SafeToStopSetsVerification {
@@ -42,8 +51,9 @@ public final class SafeToStopSetsVerification {
         /** The group list was verified against the actual partition owners. */
         EXACT,
         /**
-         * The group list was checked for structural correctness only. The answer is safe by construction
-         * but not proven against the actual layout; see {@link SafeToStopSetsVerification#notVerified()}.
+         * The group list was checked for structural correctness and for the group size bound of the
+         * configuration only. The answer is safe by construction but not proven against the actual layout;
+         * see {@link SafeToStopSetsVerification#notVerified()}.
          */
         STRUCTURE_ONLY,
         /** The cluster topology or affinity is not ready; no answer can be formed. */
