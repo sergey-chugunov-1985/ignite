@@ -300,7 +300,7 @@ public final class SafeToStopSetsHypergraph {
 
     /**
      * Counts the edges fully contained in a candidate group: the group is safe when the count is {@code 0}.
-     * This is the semantic level of the verification, and the conflict metric of the local search.
+     * This is the data safety level of the verification, and the conflict metric of the local search.
      *
      * @param group Candidate group as a bit set over {@link #nodes()}.
      * @return Number of edges fully contained in the group.

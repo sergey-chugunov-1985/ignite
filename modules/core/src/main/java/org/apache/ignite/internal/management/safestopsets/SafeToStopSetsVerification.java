@@ -26,8 +26,8 @@ import org.apache.ignite.lang.IgniteExperimental;
  * Outcome of the verification performed by {@code SafeToStopSetsSupport.verify}. Immutable.
  * <p>
  * The {@link #mode()} tells the operator what was actually checked: {@code EXACT} — the group list was
- * verified against the actual partition owners; {@code STRUCTURE_ONLY} — the group list was checked for
- * structural correctness (coverage, no duplicates, no empty groups) and for the group size bound the
+ * verified against the actual partition owners; {@code CONFIG_ONLY} — the group list was checked for the
+ * split integrity (coverage, no duplicates, no empty groups) and for the group size bound the
  * configuration guarantees, without reading the partition owners (the strategy did not read them, and the
  * configuration allows it: rendezvous affinity, no copy filters, ownership matches the affinity). The answer
  * is safe by construction — a group within the copy bound never holds all copies of a partition — but it was
@@ -36,10 +36,10 @@ import org.apache.ignite.lang.IgniteExperimental;
  * groups.
  * <p>
  * {@code UNPROVABLE} is a strategy fault, not a cluster fault: a strategy produced a group list without
- * reading the partition owners on a context that does not allow a structure-only answer, or its groups exceed
- * the size bound the configuration proves, or the list is structurally broken or holds a whole owner set.
+ * reading the partition owners on a context that does not allow a configuration-only answer, or its groups exceed
+ * the size bound the configuration proves, or the list breaks the split integrity or holds a whole owner set.
  * <p>
- * The size bound is the whole of what {@code STRUCTURE_ONLY} can prove: it constrains the number of copies a
+ * The size bound is the whole of what {@code CONFIG_ONLY} can prove: it constrains the number of copies a
  * group may take, not their placement. A strategy whose safety argument depends on the layout (a cell, a data
  * center, an affinity filter) must therefore read the partition owners and accept {@code EXACT} instead of
  * relying on the configuration bound.
@@ -51,20 +51,20 @@ public final class SafeToStopSetsVerification {
         /** The group list was verified against the actual partition owners. */
         EXACT,
         /**
-         * The group list was checked for structural correctness and for the group size bound of the
+         * The group list was checked for the split integrity and for the group size bound of the
          * configuration only. The answer is safe by construction but not proven against the actual layout;
          * see {@link SafeToStopSetsVerification#notVerified()}.
          */
-        STRUCTURE_ONLY,
+        CONFIG_ONLY,
         /** The cluster topology or affinity is not ready; no answer can be formed. */
         NOT_READY,
         /** The topology changed between the context snapshot and the verification; the answer is void. */
         UNSTABLE,
         /**
          * The strategy produced a group list the core cannot accept: either it did not read the partition
-         * owners on a context that requires it, or the list is structurally broken (not a partition of the
-         * snapshot nodes), or a group holds a whole set of partition owners. A strategy fault, not a cluster
-         * fault; the reasons are in {@link #violations()}.
+         * owners on a context that requires it, or the list breaks the split integrity (not a partition of
+         * the snapshot nodes), or a group holds a whole set of partition owners. A strategy fault, not a
+         * cluster fault; the reasons are in {@link #violations()}.
          */
         UNPROVABLE
     }
@@ -75,17 +75,17 @@ public final class SafeToStopSetsVerification {
     /** What the verification actually checked. */
     private final Mode mode;
 
-    /** Human readable reasons for a failed or structure-only result; empty when {@link #valid} and mode is {@code EXACT}. */
+    /** Human-readable reasons for a failed or configuration-only result; empty when {@link #valid} and mode is {@code EXACT}. */
     private final List<String> violations;
 
-    /** Reasons why the result is {@code STRUCTURE_ONLY} instead of {@code EXACT}; empty otherwise. */
+    /** Reasons why the result is {@code CONFIG_ONLY} instead of {@code EXACT}; empty otherwise. */
     private final List<String> notVerified;
 
     /**
      * @param valid Whether the group list is safe (or safe by construction) and can be printed.
      * @param mode What was checked.
-     * @param violations Human readable reasons for a failure or the structure-only qualification.
-     * @param notVerified Reasons why the answer is {@code STRUCTURE_ONLY} instead of {@code EXACT}.
+     * @param violations Human-readable reasons for a failure or the configuration-only qualification.
+     * @param notVerified Reasons why the answer is {@code CONFIG_ONLY} instead of {@code EXACT}.
      */
     public SafeToStopSetsVerification(
         boolean valid,
@@ -114,14 +114,14 @@ public final class SafeToStopSetsVerification {
     }
 
     /**
-     * @return Human readable violations; empty when the result is valid and {@link #mode()} is {@code EXACT}.
+     * @return Human-readable violations; empty when the result is valid and {@link #mode()} is {@code EXACT}.
      */
     public List<String> violations() {
         return violations;
     }
 
     /**
-     * @return Reasons why the result is {@code STRUCTURE_ONLY}; empty otherwise.
+     * @return Reasons why the result is {@code CONFIG_ONLY}; empty otherwise.
      */
     public List<String> notVerified() {
         return notVerified;

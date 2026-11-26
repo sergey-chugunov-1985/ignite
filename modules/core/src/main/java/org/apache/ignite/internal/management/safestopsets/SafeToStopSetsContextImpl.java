@@ -97,7 +97,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     private final Map<String, Integer> affinityNodes;
 
     /** Reasons why the configuration-only proof is not legal, by group name. */
-    private final Map<String, String> structureOnlyBlockers;
+    private final Map<String, String> configOnlyBlockers;
 
     /** Nodes that are already being stopped gracefully and are therefore excluded from {@link #nodes}. */
     private final List<UUID> gracefulShutdownNodes;
@@ -153,7 +153,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
         this.grpCtxs = snap.grpCtxs;
         this.affByGrpId = snap.affByGrpId;
         this.affinityNodes = snap.affinityNodes;
-        this.structureOnlyBlockers = snap.structureOnlyBlockers;
+        this.configOnlyBlockers = snap.configOnlyBlockers;
         this.gracefulShutdownNodes = snap.gracefulShutdownNodes;
         this.excludedNoBackupGroups = snap.excludedNoBackupGroups;
         this.ownersAvailable = snap.ownersAvailable;
@@ -199,8 +199,8 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
     }
 
     /** {@inheritDoc} */
-    @Override public Map<String, String> structureOnlyBlockers() {
-        return structureOnlyBlockers;
+    @Override public Map<String, String> configOnlyBlockers() {
+        return configOnlyBlockers;
     }
 
     /** {@inheritDoc} */
@@ -559,7 +559,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
             // A pure function of the configuration, so it is evaluated for every group, ready or not:
             // the configuration path is either legal or not, independent of the topology state.
-            String blocker = structureOnlyBlocker(ccfg.getAffinity());
+            String blocker = configOnlyBlocker(ccfg.getAffinity());
 
             if (blocker != null)
                 blockers.put(grpName, blocker);
@@ -597,7 +597,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
         snap.grpCtxs = Collections.unmodifiableList(grps);
         snap.affByGrpId = Collections.unmodifiableMap(affs);
         snap.affinityNodes = Collections.unmodifiableMap(affNodes);
-        snap.structureOnlyBlockers = Collections.unmodifiableMap(blockers);
+        snap.configOnlyBlockers = Collections.unmodifiableMap(blockers);
         snap.ownersAvailable = available;
 
         return snap;
@@ -660,7 +660,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
      * @param aff Affinity function of the group, {@code null} for the default one.
      * @return The blocking reason, or {@code null} if the configuration path is legal.
      */
-    private static String structureOnlyBlocker(AffinityFunction aff) {
+    private static String configOnlyBlocker(AffinityFunction aff) {
         if (aff == null)
             return null;
 
@@ -741,7 +741,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
         private Map<String, Integer> affinityNodes = Collections.emptyMap();
 
         /** Reasons why the configuration-only proof is not legal, by group name. */
-        private Map<String, String> structureOnlyBlockers = Collections.emptyMap();
+        private Map<String, String> configOnlyBlockers = Collections.emptyMap();
 
         /** Nodes that are already being stopped gracefully. */
         private List<UUID> gracefulShutdownNodes = Collections.emptyList();

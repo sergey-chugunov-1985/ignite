@@ -67,7 +67,7 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
     /** Cache without backups. */
     private static final String NO_BACKUP_CACHE_NAME = "safe-to-stop-sets-no-backup-cache";
 
-    /** Cache without backups whose configuration would block the structure-only proof. */
+    /** Cache without backups whose configuration would block the configuration-only proof. */
     private static final String NO_BACKUP_BLOCKED_CACHE_NAME = "safe-to-stop-sets-no-backup-blocked-cache";
 
     /** Number of partitions of the test caches. */
@@ -224,7 +224,7 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
     /**
      * The size of the affinity node set is a configuration-level value: the snapshot answers it for every
      * group of the snapshot without reading the partition owners, an unknown group is a caller bug, and a
-     * clean rendezvous configuration has no structure-only blockers.
+     * clean rendezvous configuration has no configuration-only blockers.
      *
      * @throws Exception If failed.
      */
@@ -259,17 +259,17 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
             // Expected: the snapshot knows the size of every group of the snapshot, and nothing else.
         }
 
-        assertTrue(ctx.structureOnlyBlockers().toString(), ctx.structureOnlyBlockers().isEmpty());
+        assertTrue(ctx.configOnlyBlockers().toString(), ctx.configOnlyBlockers().isEmpty());
     }
 
     /**
-     * The configuration-level conditions of the structure-only proof are reported by the snapshot: a custom
+     * The configuration-level conditions of the configuration-only proof are reported by the snapshot: a custom
      * affinity class blocks, and copy filters without {@code excludeNeighbors} block.
      *
      * @throws Exception If failed.
      */
     @Test
-    public void testStructureOnlyBlockers() throws Exception {
+    public void testConfigOnlyBlockers() throws Exception {
         startGridsMultiThreaded(3);
 
         createCache(new CacheConfiguration<>(CACHE_NAME)
@@ -288,7 +288,7 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
 
         SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0));
 
-        Map<String, String> blockers = ctx.structureOnlyBlockers();
+        Map<String, String> blockers = ctx.configOnlyBlockers();
 
         assertEquals(blockers.toString(), 2, blockers.size());
         assertTrue(blockers.get(CACHE_NAME), blockers.get(CACHE_NAME).contains("not RendezvousAffinityFunction"));
@@ -302,13 +302,13 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
     }
 
     /**
-     * A copy filter together with {@code excludeNeighbors} does not block the structure-only proof: the
+     * A copy filter together with {@code excludeNeighbors} does not block the configuration-only proof: the
      * fill-up pass of the affinity function reaches the full number of copies.
      *
      * @throws Exception If failed.
      */
     @Test
-    public void testStructureOnlyBlockersWithExcludeNeighbors() throws Exception {
+    public void testConfigOnlyBlockersWithExcludeNeighbors() throws Exception {
         startGridsMultiThreaded(3);
 
         createCache(new CacheConfiguration<>(CACHE_NAME)
@@ -322,7 +322,7 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
 
         SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0));
 
-        assertTrue(ctx.structureOnlyBlockers().toString(), ctx.structureOnlyBlockers().isEmpty());
+        assertTrue(ctx.configOnlyBlockers().toString(), ctx.configOnlyBlockers().isEmpty());
     }
 
     /**
@@ -363,8 +363,8 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
             assertEquals("The excluded names are reported in the group name order",
                 Arrays.asList(NO_BACKUP_BLOCKED_CACHE_NAME, NO_BACKUP_CACHE_NAME), ctx.excludedNoBackupGroups());
 
-            assertTrue("The configuration of an excluded group must not block the answer: " + ctx.structureOnlyBlockers(),
-                ctx.structureOnlyBlockers().isEmpty());
+            assertTrue("The configuration of an excluded group must not block the answer: " + ctx.configOnlyBlockers(),
+                ctx.configOnlyBlockers().isEmpty());
 
             assertNotNull(ctx.affinityNodesCount(CACHE_NAME));
 
@@ -755,7 +755,7 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
         return res;
     }
 
-    /** A subclass of the default affinity to check the exact class comparison of the structure-only proof. */
+    /** A subclass of the default affinity to check the exact class comparison of the configuration-only proof. */
     private static class CustomAffinityFunction extends RendezvousAffinityFunction {
         /**
          * @param exclNeighbors Exclude neighbors.

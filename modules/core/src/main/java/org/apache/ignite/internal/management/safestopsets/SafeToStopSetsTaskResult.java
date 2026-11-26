@@ -26,7 +26,7 @@ import org.apache.ignite.internal.util.typedef.internal.S;
 /**
  * Result of {@link SafeToStopSetsTask}.
  * <p>
- * The result is only formed when the verification succeeded ({@code EXACT} or {@code STRUCTURE_ONLY});
+ * The result is only formed when the verification succeeded ({@code EXACT} or {@code CONFIG_ONLY});
  * failed verifications surface as a task error instead of a partial result. It describes the cluster
  * snapshot the answer was computed for (the server nodes and the topology version they were read at),
  * the groups themselves, what the verification actually checked and the strategy that produced the
@@ -50,14 +50,14 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
 
     /**
      * What the verification checked: {@link SafeToStopSetsVerification.Mode#EXACT} or
-     * {@link SafeToStopSetsVerification.Mode#STRUCTURE_ONLY} ({@link SafeToStopSetsVerification.Mode}
+     * {@link SafeToStopSetsVerification.Mode#CONFIG_ONLY} ({@link SafeToStopSetsVerification.Mode}
      * name).
      */
     @Order(3)
     String mode;
 
     /**
-     * Reasons why the result is {@code structure-only} instead of {@code exact}; empty when the mode is
+     * Reasons why the result is {@code configuration-only} instead of {@code exact}; empty when the mode is
      * {@code exact}.
      */
     @Order(4)
@@ -102,7 +102,7 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
      * @param topVer Topology version the snapshot was taken at.
      * @param groups Groups of server node ids.
      * @param mode What the verification checked.
-     * @param notVerified Reasons why the result is structure-only; empty for {@code exact}.
+     * @param notVerified Reasons why the result is configuration-only; empty for {@code exact}.
      * @param strategyName Name of the strategy that produced the groups.
      * @param strategyClass Fully qualified class name of the strategy implementation.
      * @param gracefulShutdownNodes Nodes planned to stop gracefully.
@@ -150,7 +150,7 @@ public class SafeToStopSetsTaskResult extends IgniteDataTransferObject {
         return mode;
     }
 
-    /** @return Reasons why the result is structure-only; empty for {@code exact}. */
+    /** @return Reasons why the result is configuration-only; empty for {@code exact}. */
     public List<String> notVerified() {
         return notVerified;
     }

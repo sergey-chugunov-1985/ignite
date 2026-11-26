@@ -106,12 +106,12 @@ public interface SafeToStopSetsContext {
      * the configuration path is legal. Cost — one call per group, no partition data is read.
      * <p>
      * The strategy uses the map to refuse with a readable per-group message instead of guessing, and the
-     * verification uses it independently to reject a {@code structure-only} answer that the configuration does
+     * verification uses it independently to reject a {@code configuration-only} answer that the configuration does
      * not support: the check is duplicated by the core, not delegated to the strategy.
      *
      * @return Group name to reason mapping; empty if every group allows the configuration path.
      */
-    Map<String, String> structureOnlyBlockers();
+    Map<String, String> configOnlyBlockers();
 
     /**
      * Whether the actual partition owners can be read right now. {@code false} means that the affinity or the
@@ -122,7 +122,7 @@ public interface SafeToStopSetsContext {
      * The value also turns {@code false} when a read revealed a partition with no owner left: the snapshot is
      * unusable after that, even if the strategy caught the failure of {@link #partitionOwners()} and produced
      * an answer from the configuration. The verification checks this flag first, so a strategy cannot turn an
-     * unreadable layout into a {@code structure-only} answer.
+     * unreadable layout into a {@code configuration-only} answer.
      *
      * @return {@code True} if {@link #partitionOwners()} can be read and no fatal inconsistency was found.
      */

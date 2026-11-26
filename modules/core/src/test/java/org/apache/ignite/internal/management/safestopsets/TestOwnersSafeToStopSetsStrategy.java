@@ -27,7 +27,7 @@ import org.apache.ignite.cluster.ClusterNode;
 /**
  * Test-only strategy that produces a group list without reading the partition owners. It is a
  * deliberately faulty SPI implementation: the verification must reject its result with
- * {@link SafeToStopSetsVerification.Mode#UNPROVABLE} when the context does not allow a structure-only
+ * {@link SafeToStopSetsVerification.Mode#UNPROVABLE} when the context does not allow a configuration-only
  * answer, and no OSS strategy can rely on its output. It exists so the verification's
  * {@code UNPROVABLE} branch is covered by a test without a live cluster.
  */
@@ -44,7 +44,7 @@ public class TestOwnersSafeToStopSetsStrategy implements SafeToStopSetsStrategy 
 
     /**
      * Deals the snapshot nodes round-robin over pairs, without reading the partition owners: the result
-     * violates the structure-only preconditions whenever the context requires the owners.
+     * violates the configuration-only preconditions whenever the context requires the owners.
      *
      * @param ctx Snapshot of the cluster state.
      * @return Pairs of consecutive snapshot nodes.

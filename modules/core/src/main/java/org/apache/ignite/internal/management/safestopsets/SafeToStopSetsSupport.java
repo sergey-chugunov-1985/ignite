@@ -72,7 +72,7 @@ public final class SafeToStopSetsSupport {
      * copy (no two nodes may be stopped together, every node is a group of its own). There is no other sentinel:
      * a group of one node is always safe.
      * <p>
-     * This is also the bound the verification enforces on a structure-only answer: a strategy that did not read
+     * This is also the bound the verification enforces on a configuration-only answer: a strategy that did not read
      * the partition owners may not produce a group larger than this, because the copy count of the
      * configuration is the only safety argument available without the layout.
      *
@@ -200,19 +200,19 @@ public final class SafeToStopSetsSupport {
     }
 
     /**
-     * Structural and semantic verification of a group list, in a short-circuiting order: ready, stable,
-     * structure, semantics. The guards cannot be waived by a strategy: they run for every strategy, including
-     * ones that implement the SPI directly. The semantic level runs whenever the context has read the owners;
-     * a result that was not checked against the actual layout is marked {@code STRUCTURE_ONLY} with the
-     * reason, never printed silently, and is rejected when the context does not allow a structure-only
-     * answer.
+     * Verification of the split integrity and of the data safety of a group list, in a short-circuiting order:
+     * ready, stable, split integrity, data safety. The guards cannot be waived by a strategy: they run for
+     * every strategy, including ones that implement the SPI directly. The data safety level runs whenever the
+     * context has read the owners; a result that was not checked against the actual layout is marked
+     * {@code CONFIG_ONLY} with the reason, never printed silently, and is rejected when the context does not
+     * allow a configuration-only answer.
      * <p>
-     * A structure-only answer is accepted only within the group size bound the configuration guarantees
+     * A configuration-only answer is accepted only within the group size bound the configuration guarantees
      * ({@link #maxSafeGroupSize(SafeToStopSetsContext)}): the copy count of a group is a property of the
      * configuration, so a group that respects the bound keeps at least one live copy of every partition
-     * whatever the layout is. The size bound is the only thing a structure-only answer can prove: it says
+     * whatever the layout is. The size bound is the only thing a configuration-only answer can prove: it says
      * nothing about <em>where</em> the copies live, so a strategy whose constraint depends on the placement
-     * (a cell, a data center, an affinity filter) has to read the partition owners and accept the semantic
+     * (a cell, a data center, an affinity filter) has to read the partition owners and accept the data safety
      * level instead of relying on the configuration bound.
      *
      * @param grps Candidate partition of the snapshot nodes.
@@ -240,7 +240,7 @@ public final class SafeToStopSetsSupport {
                         + "), the answer is void, retry after the topology stabilizes"),
                 Collections.emptyList());
 
-        List<String> violations = structuralViolations(grps, ctx);
+        List<String> violations = splitIntegrityViolations(grps, ctx);
 
         if (!violations.isEmpty())
             return new SafeToStopSetsVerification(
@@ -250,7 +250,7 @@ public final class SafeToStopSetsSupport {
                 Collections.emptyList());
 
         if (!ctx.ownersRead()) {
-            Map<String, String> blockers = ctx.structureOnlyBlockers();
+            Map<String, String> blockers = ctx.configOnlyBlockers();
 
             if (blockers.isEmpty() && ctx.ownershipMatchesAffinity()) {
                 List<String> oversized = oversizedGroups(grps, maxSafeGroupSize(ctx));
@@ -258,7 +258,7 @@ public final class SafeToStopSetsSupport {
                 if (oversized.isEmpty())
                     return new SafeToStopSetsVerification(
                         true,
-                        SafeToStopSetsVerification.Mode.STRUCTURE_ONLY,
+                        SafeToStopSetsVerification.Mode.CONFIG_ONLY,
                         Collections.emptyList(),
                         Collections.singletonList(
                             "The partition owners were not read: the answer is derived from the configuration "
@@ -276,7 +276,7 @@ public final class SafeToStopSetsSupport {
 
             for (Map.Entry<String, String> blocker : blockers.entrySet())
                 reasons.add(
-                    "The configuration does not allow a structure-only answer for group ["
+                    "The configuration does not allow a configuration-only answer for group ["
                         + blocker.getKey() + "]: " + blocker.getValue());
 
             if (!ctx.ownershipMatchesAffinity())
@@ -294,7 +294,7 @@ public final class SafeToStopSetsSupport {
                 Collections.emptyList());
         }
 
-        violations = semanticViolations(grps, ctx);
+        violations = dataSafetyViolations(grps, ctx);
 
         if (!violations.isEmpty())
             return new SafeToStopSetsVerification(
@@ -311,14 +311,14 @@ public final class SafeToStopSetsSupport {
     }
 
     /**
-     * The size level of a structure-only answer: without the partition owners the only safety argument left is
+     * The size level of a configuration-only answer: without the partition owners the only safety argument left is
      * the copy count of the configuration, so every group must fit into
      * {@link #maxSafeGroupSize(SafeToStopSetsContext)}. A group that does not fit may hold a whole owner set of
      * a partition with fewer copies than the bound assumes, which is exactly the loss the answer claims to
-     * prevent. The check is {@code O(#groups)}: it reads the configuration only, so the structure-only fast
+     * prevent. The check is {@code O(#groups)}: it reads the configuration only, so the configuration-only fast
      * path stays free of the layout read.
      *
-     * @param grps Candidate partition of the snapshot nodes, already structurally verified.
+     * @param grps Candidate partition of the snapshot nodes, already verified for the split integrity.
      * @param maxGroupSize The largest group the configuration proves safe.
      * @return Empty when every group respects the bound, otherwise one human readable reason per offending
      *      group.
@@ -343,10 +343,10 @@ public final class SafeToStopSetsSupport {
     }
 
     /**
-     * The structure level: the group list must be a partition of the snapshot nodes — every snapshot node in
-     * exactly one group, no empty groups, no unknown nodes.
+     * The split integrity level: the group list must be a partition of the snapshot nodes — every snapshot node
+     * in exactly one group, no empty groups, no unknown nodes.
      */
-    private static List<String> structuralViolations(List<List<UUID>> grps, SafeToStopSetsContext ctx) {
+    private static List<String> splitIntegrityViolations(List<List<UUID>> grps, SafeToStopSetsContext ctx) {
         List<String> res = new ArrayList<>();
         Set<UUID> snapshot = new HashSet<>();
 
@@ -382,13 +382,13 @@ public final class SafeToStopSetsSupport {
     }
 
     /**
-     * The semantic level: no stop candidate may hold a whole set of partition owners. Singletons are not
+     * The data safety level: no stop candidate may hold a whole set of partition owners. Singletons are not
      * stop candidates — they are printed as "cannot be stopped together with any other node" — so the
      * invariant only applies to groups of more than one node; the all-singletons result is rejected by the
      * task as "no safe group" instead. The owner sets of the snapshot are already restricted to the
      * snapshot nodes, so a node outside the snapshot can neither form nor satisfy a constraint.
      */
-    private static List<String> semanticViolations(List<List<UUID>> grps, SafeToStopSetsContext ctx) {
+    private static List<String> dataSafetyViolations(List<List<UUID>> grps, SafeToStopSetsContext ctx) {
         List<String> res = new ArrayList<>();
 
         for (PartitionOwners owners : ctx.partitionOwners()) {

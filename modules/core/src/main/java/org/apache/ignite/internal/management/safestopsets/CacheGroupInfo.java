@@ -17,13 +17,12 @@
 
 package org.apache.ignite.internal.management.safestopsets;
 
+import java.util.List;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.PartitionLossPolicy;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.internal.util.typedef.internal.S;
 import org.apache.ignite.lang.IgniteBiPredicate;
-
-import java.util.List;
 
 /**
  * Immutable per-group cache configuration of a snapshot.

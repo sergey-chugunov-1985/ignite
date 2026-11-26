@@ -31,9 +31,10 @@ import org.apache.ignite.cluster.ClusterNode;
  * <p>
  * The partition owners are read only when the actual ownership is not yet equal to the affinity assignment
  * (rebalance in flight, a node was drained, {@code rebalanceMode = NONE}, loss policy {@code IGNORE}): in
- * that state the answer is built from the actual layout and verified semantically. When both the
+ * that state the answer is built from the actual layout and verified against it. When both the
  * configuration-level conditions and the state-level condition hold, the answer is derived from the
- * configuration only; the verification marks it {@code structure-only} instead of claiming a semantic proof.
+ * configuration only; the verification marks it {@code configuration-only} instead of claiming a proof against
+ * the actual layout.
  */
 public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrategy {
     /** Strategy name, the value of the {@code --strategy} command line option. */
@@ -56,10 +57,10 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
      *      layout, so the command fails closed and suggests a strategy that computes the actual layout.
      */
     @Override public List<List<UUID>> split(SafeToStopSetsContext ctx) {
-        Map<String, String> blockers = ctx.structureOnlyBlockers();
+        Map<String, String> blockers = ctx.configOnlyBlockers();
 
         if (!blockers.isEmpty())
-            throw new IllegalArgumentException(structureOnlyFailure(blockers));
+            throw new IllegalArgumentException(configOnlyFailure(blockers));
 
         int maxGroupSize = SafeToStopSetsSupport.maxSafeGroupSize(ctx);
 
@@ -145,7 +146,7 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
      * @param blockers Group name to reason mapping of the snapshot.
      * @return Failure message with the offending groups, the snapshot's reasons and the strategy hint.
      */
-    private static String structureOnlyFailure(Map<String, String> blockers) {
+    private static String configOnlyFailure(Map<String, String> blockers) {
         StringBuilder sb = new StringBuilder(
             "The number of copies cannot be derived from the configuration of these groups:");
 

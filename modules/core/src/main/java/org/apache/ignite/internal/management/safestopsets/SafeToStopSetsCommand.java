@@ -82,7 +82,7 @@ public class SafeToStopSetsCommand implements ComputeCommand<SafeToStopSetsComma
         if (SafeToStopSetsVerification.Mode.EXACT.name().equals(res.mode()))
             printer.accept("Verified: exact");
         else {
-            printer.accept("Verified: structure-only");
+            printer.accept("Verified: configuration-only");
 
             for (String reason : res.notVerified())
                 printer.accept("  Reason: " + reason);

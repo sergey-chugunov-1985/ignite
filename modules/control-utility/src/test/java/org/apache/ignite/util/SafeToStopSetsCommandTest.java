@@ -186,13 +186,13 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
     /**
      * A stable cluster: the ownership matches the affinity assignment, so the default strategy does not read
      * the partition owners and the answer is derived from the configuration only. The verification is marked
-     * structure-only with the reason, exit code 0. The cache uses a non-{@code IGNORE} loss policy: with the
-     * default policy the topology does not track partition loss and the structure-only proof is not legal.
+     * configuration-only with the reason, exit code 0. The cache uses a non-{@code IGNORE} loss policy: with the
+     * default policy the topology does not track partition loss and the configuration-only proof is not legal.
      *
      * @throws Exception If failed.
      */
     @Test
-    public void testStructureOnlyOnStableCluster() throws Exception {
+    public void testConfigOnlyOnStableCluster() throws Exception {
         startGrids(4);
 
         createCache(CACHE_NAME, 2, null, PartitionLossPolicy.READ_WRITE_SAFE);
@@ -205,7 +205,7 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
 
         String out = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS);
 
-        GridTestUtils.assertContains(log, out, "Verified: structure-only");
+        GridTestUtils.assertContains(log, out, "Verified: configuration-only");
         GridTestUtils.assertContains(log, out, "Reason: The partition owners were not read");
         GridTestUtils.assertContains(log, out,
             "Groups (stop the nodes of one group at a time, then re-run this command):");
@@ -214,7 +214,7 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
 
     /**
      * A cache with rebalance disabled cannot prove that the ownership matches the affinity, so the default
-     * strategy reads the actual partition owners and the answer is verified semantically: exact, exit code 0.
+     * strategy reads the actual partition owners and the answer is verified against them: exact, exit code 0.
      *
      * @throws Exception If failed.
      */
@@ -229,7 +229,7 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
         GridTestUtils.assertContains(log, out, "Verified: exact");
         GridTestUtils.assertContains(log, out,
             "Groups (stop the nodes of one group at a time, then re-run this command):");
-        assertFalse("structure-only must be absent, output:\n" + out, out.contains("Verified: structure-only"));
+        assertFalse("configuration-only must be absent, output:\n" + out, out.contains("Verified: configuration-only"));
     }
 
     /**
@@ -528,7 +528,7 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
 
     /**
      * Writes enough entries to touch every partition and settle the DHT: the partition supply completes and
-     * the ownership matches the affinity assignment, which is the precondition of the structure-only proof.
+     * the ownership matches the affinity assignment, which is the precondition of the configuration-only proof.
      *
      * @param name Cache name.
      * @throws Exception If failed.
@@ -542,7 +542,7 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
 
     /**
      * Waits until a fresh snapshot of the cluster reports that the actual ownership matches the affinity
-     * assignment: the precondition of the structure-only proof. The DHT settles only after the partition
+     * assignment: the precondition of the configuration-only proof. The DHT settles only after the partition
      * supply completes, which may take a moment beyond {@link #awaitPartitionMapExchange()}.
      *
      * @throws Exception If the condition is not met within the timeout.

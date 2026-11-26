@@ -48,7 +48,7 @@ final class TestSafeToStopSetsContext implements SafeToStopSetsContext {
     /** Group name to affinity node set size; a group without an entry defaults to the number of nodes. */
     private final Map<String, Integer> affinityNodes;
 
-    /** Group name to structure-only blocker reason. */
+    /** Group name to configuration-only blocker reason. */
     private final Map<String, String> blockers = new LinkedHashMap<>();
 
     /** Owners served by {@link #partitionOwners()}. */
@@ -161,7 +161,7 @@ final class TestSafeToStopSetsContext implements SafeToStopSetsContext {
     }
 
     /** {@inheritDoc} */
-    @Override public Map<String, String> structureOnlyBlockers() {
+    @Override public Map<String, String> configOnlyBlockers() {
         return Collections.unmodifiableMap(blockers);
     }
 

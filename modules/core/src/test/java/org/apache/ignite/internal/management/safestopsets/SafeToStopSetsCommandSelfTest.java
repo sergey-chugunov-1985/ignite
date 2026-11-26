@@ -69,20 +69,20 @@ public class SafeToStopSetsCommandSelfTest {
     }
 
     /**
-     * A {@code structure-only} result prints its mode and every reason on its own line.
+     * A {@code configuration-only} result prints its mode and every reason on its own line.
      *
      * @throws Exception If failed.
      */
     @Test
-    public void testPrintResultStructureOnly() {
+    public void testPrintResultConfigOnly() {
         SafeToStopSetsTaskResult res = result(Arrays.asList(Arrays.asList("a", "b")),
-            SafeToStopSetsVerification.Mode.STRUCTURE_ONLY.name(),
+            SafeToStopSetsVerification.Mode.CONFIG_ONLY.name(),
             Arrays.asList("The partition owners were not read", "The ownership does not match the affinity"),
             Collections.emptyList());
 
         List<String> out = print(res);
 
-        assertTrue(out.toString(), out.contains("Verified: structure-only"));
+        assertTrue(out.toString(), out.contains("Verified: configuration-only"));
         assertTrue(out.toString(), out.contains("  Reason: The partition owners were not read"));
         assertTrue(out.toString(), out.contains("  Reason: The ownership does not match the affinity"));
     }
@@ -326,7 +326,7 @@ public class SafeToStopSetsCommandSelfTest {
      *
      * @param groups Groups of consistent IDs (the IDs are synthetic, one per node).
      * @param mode Verification mode.
-     * @param notVerified Reasons of the structure-only qualification.
+     * @param notVerified Reasons of the configuration-only qualification.
      * @param gracefulShutdownNodes Kill set.
      * @return The result.
      */
@@ -344,7 +344,7 @@ public class SafeToStopSetsCommandSelfTest {
      *
      * @param groups Groups of consistent IDs (the IDs are synthetic, one per node).
      * @param mode Verification mode.
-     * @param notVerified Reasons of the structure-only qualification.
+     * @param notVerified Reasons of the configuration-only qualification.
      * @param gracefulShutdownNodes Kill set.
      * @param excludedNoBackupGroups Cache groups excluded from the computation.
      * @return The result.

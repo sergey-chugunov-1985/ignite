@@ -343,11 +343,11 @@ public class SafeToStopSetsSupportSelfTest {
     }
 
     // ---------------------------------------------------------------------
-    // Verification: structural level
+    // Verification: split integrity level
     // ---------------------------------------------------------------------
 
     /**
-     * A group list that does not cover every snapshot node is structurally broken and is rejected.
+     * A group list that does not cover every snapshot node breaks the split integrity and is rejected.
      *
      * @throws Exception If failed.
      */
@@ -366,7 +366,7 @@ public class SafeToStopSetsSupportSelfTest {
     }
 
     /**
-     * A node that belongs to two groups is structurally broken and is rejected.
+     * A node that belongs to two groups breaks the split integrity and is rejected.
      *
      * @throws Exception If failed.
      */
@@ -386,7 +386,7 @@ public class SafeToStopSetsSupportSelfTest {
     }
 
     /**
-     * An empty group is structurally broken and is rejected.
+     * An empty group breaks the split integrity and is rejected.
      *
      * @throws Exception If failed.
      */
@@ -404,7 +404,7 @@ public class SafeToStopSetsSupportSelfTest {
     }
 
     // ---------------------------------------------------------------------
-    // Verification: semantic level
+    // Verification: data safety level
     // ---------------------------------------------------------------------
 
     /**
@@ -433,7 +433,7 @@ public class SafeToStopSetsSupportSelfTest {
     }
 
     /**
-     * A singleton that fully contains the owners of a partition is not a semantic violation: singletons
+     * A singleton that fully contains the owners of a partition is not a data safety violation: singletons
      * are not stop candidates, they are printed as "cannot be stopped together with any other node". The
      * all-singletons result is rejected by the task as "no safe group" instead.
      *
@@ -480,17 +480,17 @@ public class SafeToStopSetsSupportSelfTest {
     }
 
     // ---------------------------------------------------------------------
-    // Verification: structure-only (D24)
+    // Verification: configuration-only (D24)
     // ---------------------------------------------------------------------
 
     /**
-     * When the owners were not read, the configuration allows a structure-only answer, and every group fits
-     * into the configuration's size bound, the answer is marked {@code STRUCTURE_ONLY} with a reason.
+     * When the owners were not read, the configuration allows a configuration-only answer, and every group fits
+     * into the configuration's size bound, the answer is marked {@code CONFIG_ONLY} with a reason.
      *
      * @throws Exception If failed.
      */
     @Test
-    public void testVerifyStructureOnly() throws Exception {
+    public void testVerifyConfigOnly() throws Exception {
         List<UUID> nodes = ids(4);
 
         // backups = 3: copies = 4, maxSafeGroupSize = 3; groups of 2 are within the bound.
@@ -501,21 +501,21 @@ public class SafeToStopSetsSupportSelfTest {
                 Arrays.asList(nodes.get(2), nodes.get(3))), ctx);
 
         assertTrue(ver.valid());
-        assertEquals(SafeToStopSetsVerification.Mode.STRUCTURE_ONLY, ver.mode());
+        assertEquals(SafeToStopSetsVerification.Mode.CONFIG_ONLY, ver.mode());
         assertFalse(ver.failed());
-        assertFalse("The structure-only reason must be present", ver.notVerified().isEmpty());
+        assertFalse("The configuration-only reason must be present", ver.notVerified().isEmpty());
     }
 
     /**
      * A group that exceeds the size bound the configuration guarantees cannot be proved safe without reading
      * the partition owners: the verification must refuse with {@code UNPROVABLE} instead of returning a
-     * valid structure-only answer. This is the regression for the C3 defect (a trivial strategy returning
+     * valid configuration-only answer. This is the regression for the C3 defect (a trivial strategy returning
      * the whole cluster as one group must not be accepted).
      *
      * @throws Exception If failed.
      */
     @Test
-    public void testVerifyStructureOnlyOversizedGroupIsUnprovable() throws Exception {
+    public void testVerifyConfigOnlyOversizedGroupIsUnprovable() throws Exception {
         List<UUID> nodes = ids(4);
 
         // backups = 1: copies = 2, maxSafeGroupSize = 1; a group of 4 nodes exceeds the bound.
@@ -537,12 +537,12 @@ public class SafeToStopSetsSupportSelfTest {
     /**
      * For a {@code REPLICATED} group the copy set is the affinity node set; {@code backups} is
      * {@link Integer#MAX_VALUE} there and the bound must be computed without overflow. A group within the
-     * bound is a valid structure-only answer.
+     * bound is a valid configuration-only answer.
      *
      * @throws Exception If failed.
      */
     @Test
-    public void testVerifyStructureOnlyReplicatedWithinBound() throws Exception {
+    public void testVerifyConfigOnlyReplicatedWithinBound() throws Exception {
         List<UUID> nodes = ids(6);
 
         Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
@@ -559,17 +559,17 @@ public class SafeToStopSetsSupportSelfTest {
                 Arrays.asList(nodes.get(4), nodes.get(5))), ctx);
 
         assertTrue("A group within the REPLICATED bound must be accepted", ver.valid());
-        assertEquals(SafeToStopSetsVerification.Mode.STRUCTURE_ONLY, ver.mode());
+        assertEquals(SafeToStopSetsVerification.Mode.CONFIG_ONLY, ver.mode());
     }
 
     /**
      * A snapshot with no cache groups has no copy to lose: the bound is "no limit" and any group list is a
-     * valid structure-only answer, provided the structure is correct.
+     * valid configuration-only answer, provided the structure is correct.
      *
      * @throws Exception If failed.
      */
     @Test
-    public void testVerifyStructureOnlyNoCacheGroups() throws Exception {
+    public void testVerifyConfigOnlyNoCacheGroups() throws Exception {
         List<UUID> nodes = ids(4);
 
         TestSafeToStopSetsContext ctx = new TestSafeToStopSetsContext(
@@ -579,17 +579,17 @@ public class SafeToStopSetsSupportSelfTest {
             Collections.singletonList(new ArrayList<>(nodes)), ctx);
 
         assertTrue("With no cache groups the whole cluster may be stopped at once", ver.valid());
-        assertEquals(SafeToStopSetsVerification.Mode.STRUCTURE_ONLY, ver.mode());
+        assertEquals(SafeToStopSetsVerification.Mode.CONFIG_ONLY, ver.mode());
     }
 
     /**
      * When the owners were not read and the ownership does not match the affinity, the answer is rejected
-     * with {@code UNPROVABLE}: a structure-only derivation is not sound in that state.
+     * with {@code UNPROVABLE}: a configuration-only derivation is not sound in that state.
      *
      * @throws Exception If failed.
      */
     @Test
-    public void testVerifyStructureOnlyRequiresOwnersWhenOwnershipMismatch() throws Exception {
+    public void testVerifyConfigOnlyRequiresOwnersWhenOwnershipMismatch() throws Exception {
         List<UUID> nodes = ids(4);
 
         TestSafeToStopSetsContext ctx = ctx(nodes, Collections.emptyList());
@@ -610,7 +610,7 @@ public class SafeToStopSetsSupportSelfTest {
 
     /**
      * A strategy that produces a group list without reading the owners must be rejected when the
-     * configuration has a structure-only blocker.
+     * configuration has a configuration-only blocker.
      *
      * @throws Exception If failed.
      */

@@ -195,7 +195,7 @@ public class SafeToStopSetsBackupsCountStrategySelfTest {
      * @throws Exception If failed.
      */
     @Test
-    public void testStructureOnlyBlockersRefuse() throws Exception {
+    public void testConfigOnlyBlockersRefuse() throws Exception {
         List<UUID> nodes = ids(6);
 
         TestSafeToStopSetsContext ctx = ctx(nodes, grp(GRP, 2), aff(GRP, 6), Collections.emptyList());

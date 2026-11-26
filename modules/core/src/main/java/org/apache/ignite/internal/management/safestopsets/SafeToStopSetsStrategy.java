@@ -33,8 +33,8 @@ import org.apache.ignite.lang.IgniteExperimental;
  * against the actual partition owners, or, when the strategy did not read them, against the copy bound of the
  * configuration. A strategy can only affect the quality (group sizes, number of singletons), never the safety.
  * <p>
- * A strategy may skip the owner read only when the configuration allows a structure-only answer
- * ({@code ctx.structureOnlyBlockers()} is empty, {@code ctx.ownershipMatchesAffinity()} is true and
+ * A strategy may skip the owner read only when the configuration allows a configuration-only answer
+ * ({@code ctx.configOnlyBlockers()} is empty, {@code ctx.ownershipMatchesAffinity()} is true and
  * {@code ctx.partitionOwnersAvailable()} holds). The core then accepts the result only if every group fits into
  * {@code SafeToStopSetsSupport.maxSafeGroupSize(ctx)}: the copy count of the configuration is the only safety
  * argument available without the layout. A strategy whose argument depends on the placement of the copies (a
@@ -63,9 +63,9 @@ public interface SafeToStopSetsStrategy {
      * meaningful only if {@code ctx.topologyStable()} still holds afterwards; the task checks this and fails
      * with a computation error instead of printing groups.
      * <p>
-     * An implementation that has not read the partition owners gets a structure-only verification: every group
-     * must fit into {@code SafeToStopSetsSupport.maxSafeGroupSize(ctx)}, otherwise the result is refused as
-     * {@code UNPROVABLE}. Only a strategy that reads the owners may exceed the configuration bound, because
+     * An implementation that has not read the partition owners gets a configuration-only verification: every
+     * group must fit into {@code SafeToStopSetsSupport.maxSafeGroupSize(ctx)}, otherwise the result is refused
+     * as {@code UNPROVABLE}. Only a strategy that reads the owners may exceed the configuration bound, because
      * only the actual layout can justify a bigger group.
      *
      * @param ctx Immutable read-only snapshot of the cluster state at a fixed topology version.

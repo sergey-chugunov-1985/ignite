@@ -203,7 +203,7 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
      * @throws Exception If failed.
      */
     @Test
-    public void testStructureOnlyRefusalIsUsageError() throws Exception {
+    public void testConfigOnlyRefusalIsUsageError() throws Exception {
         startGridsMultiThreaded(3);
 
         grid(0).createCache(new CacheConfiguration<>(CACHE_NAME)
