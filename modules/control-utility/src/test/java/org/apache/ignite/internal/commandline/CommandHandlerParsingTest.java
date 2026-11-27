@@ -85,7 +85,6 @@ import org.apache.ignite.internal.management.performancestatistics.PerformanceSt
 import org.apache.ignite.internal.management.property.PropertyCommand;
 import org.apache.ignite.internal.management.safestopsets.SafeToStopSetsCommand;
 import org.apache.ignite.internal.management.safestopsets.SafeToStopSetsCommandArg;
-import org.apache.ignite.internal.management.safestopsets.SafeToStopSetsNoBackupMode;
 import org.apache.ignite.internal.management.snapshot.SnapshotCommand;
 import org.apache.ignite.internal.management.snapshot.SnapshotDeleteCommand;
 import org.apache.ignite.internal.management.snapshot.SnapshotRestoreCommand;
@@ -492,27 +491,22 @@ public class CommandHandlerParsingTest {
 
         assertEquals(SafeToStopSetsCommand.class, args.command().getClass());
         assertNull(((SafeToStopSetsCommandArg)args.commandArg()).strategy());
-        assertNull(((SafeToStopSetsCommandArg)args.commandArg()).noBackup());
+        assertFalse(((SafeToStopSetsCommandArg)args.commandArg()).noBackup());
 
         args = parseArgs(asList(SAFE_TO_STOP_SETS, "--strategy", "backups-count"));
 
         assertEquals(SafeToStopSetsCommand.class, args.command().getClass());
         assertEquals("backups-count", ((SafeToStopSetsCommandArg)args.commandArg()).strategy());
 
-        args = parseArgs(asList(SAFE_TO_STOP_SETS, "--no-backup", "warning"));
+        args = parseArgs(asList(SAFE_TO_STOP_SETS, "--no-backup"));
 
         assertEquals(SafeToStopSetsCommand.class, args.command().getClass());
-        assertEquals(SafeToStopSetsNoBackupMode.WARNING, ((SafeToStopSetsCommandArg)args.commandArg()).noBackup());
-
-        // The parser uppercases the value, so the documented lowercase form and the enum constant both work.
-        args = parseArgs(asList(SAFE_TO_STOP_SETS, "--no-backup", "IGNORE"));
-
-        assertEquals(SafeToStopSetsNoBackupMode.IGNORE, ((SafeToStopSetsCommandArg)args.commandArg()).noBackup());
+        assertTrue(((SafeToStopSetsCommandArg)args.commandArg()).noBackup());
 
         assertParseArgsThrows("Please specify a value for argument: --strategy", SAFE_TO_STOP_SETS, "--strategy");
-        assertParseArgsThrows("Please specify a value for argument: --no-backup", SAFE_TO_STOP_SETS, "--no-backup");
-        assertParseArgsThrows("Can't parse value 'bogus', expected type: "
-            + SafeToStopSetsNoBackupMode.class.getName(), SAFE_TO_STOP_SETS, "--no-backup", "bogus");
+
+        // A flag takes no value, so the value is a stray token rather than a mode of the exclusion.
+        assertParseArgsThrows("Unexpected argument: warning", SAFE_TO_STOP_SETS, "--no-backup", "warning");
     }
 
     /**

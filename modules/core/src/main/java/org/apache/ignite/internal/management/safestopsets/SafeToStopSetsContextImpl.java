@@ -139,13 +139,11 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
 
     /**
      * @param ignite Ignite instance to take the snapshot from.
-     * @param noBackupMode Whether the cache groups that have no backups leave the snapshot, {@code null} to keep
-     *      them: the excluded groups leave the snapshot entirely, so neither the strategies nor the verification
-     *      see them. Only the fact of the exclusion is used, never the mode: the report is built from the
-     *      exclusions themselves.
+     * @param noBackup Whether the cache groups that have no backups leave the snapshot: they then leave every view
+     *      of it, so neither the strategies nor the verification see them.
      */
-    public SafeToStopSetsContextImpl(IgniteEx ignite, @Nullable SafeToStopSetsNoBackupMode noBackupMode) {
-        this(ignite, noBackupMode != null, Collections.emptyMap(), null);
+    public SafeToStopSetsContextImpl(IgniteEx ignite, boolean noBackup) {
+        this(ignite, noBackup, Collections.emptyMap(), null);
     }
 
     /**

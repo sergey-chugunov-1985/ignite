@@ -124,7 +124,7 @@ public class SafeToStopSetsTask
             SafeToStopSetsStrategy strategy = SafeToStopSetsStrategies.resolve(arg.strategy());
 
             SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(
-                ignite, arg.noBackup() != null, Collections.emptyMap(), strategy);
+                ignite, arg.noBackup(), Collections.emptyMap(), strategy);
 
             if (!ctx.partitionOwnersAvailable())
                 throw notReady(ctx);

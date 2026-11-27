@@ -370,16 +370,12 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
 
         GridTestUtils.assertContains(log, rejected, "No safe group of more than one node");
 
-        String ignored = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS, "--no-backup", "ignore");
+        String excluded = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS, "--no-backup");
 
-        GridTestUtils.assertContains(log, ignored,
+        GridTestUtils.assertContains(log, excluded,
             "Groups (stop the nodes of one group at a time, then re-run this command):");
-        GridTestUtils.assertContains(log, ignored, "Excluded cache groups (not covered by this answer):");
-
-        String warned = exec(EXIT_CODE_OK, SAFE_TO_STOP_SETS, "--no-backup", "warning");
-
-        GridTestUtils.assertContains(log, warned, "Excluded cache groups (not covered by this answer):");
-        GridTestUtils.assertContains(log, warned, "  " + NO_BACKUP_CACHE_NAME + " - has no backups");
+        GridTestUtils.assertContains(log, excluded, "Excluded cache groups (not covered by this answer):");
+        GridTestUtils.assertContains(log, excluded, "  " + NO_BACKUP_CACHE_NAME + " - has no backups");
 
         SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult) lastOperationResult;
 
@@ -387,21 +383,21 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
     }
 
     /**
-     * An unknown value of {@code --no-backup} is an operator error: exit code 1 and the expected value in the
-     * message.
+     * {@code --no-backup} is a flag, so a value after it is a stray token and the command is rejected with exit
+     * code 1 naming the token.
      *
      * @throws Exception If failed.
      */
     @Test
-    public void testUnknownNoBackupMode() throws Exception {
+    public void testNoBackupTakesNoValue() throws Exception {
         startGrids(4);
 
         createCache(CACHE_NAME, 2);
 
-        String out = exec(EXIT_CODE_INVALID_ARGUMENTS, SAFE_TO_STOP_SETS, "--no-backup", "bogus");
+        String out = exec(EXIT_CODE_INVALID_ARGUMENTS, SAFE_TO_STOP_SETS, "--no-backup", "warning");
 
         GridTestUtils.assertContains(log, out, "Check arguments.");
-        GridTestUtils.assertContains(log, out, "bogus");
+        GridTestUtils.assertContains(log, out, "Unexpected argument: warning");
     }
 
     /**

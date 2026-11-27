@@ -179,23 +179,21 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
             assertTrue(X.cause(e, IllegalArgumentException.class).getMessage().contains("No safe group"));
         }
 
-        for (SafeToStopSetsNoBackupMode mode : SafeToStopSetsNoBackupMode.values()) {
-            SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
+        SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
 
-            arg.noBackup(mode);
+        arg.noBackup(true);
 
-            SafeToStopSetsTaskResult res = executeTask(arg);
+        SafeToStopSetsTaskResult res = executeTask(arg);
 
-            assertEquals(Collections.singleton(NO_BACKUP_CACHE_NAME), res.excludedGroups().keySet());
-            assertEquals(Collections.singleton(SafeToStopSetsContextImpl.NO_BACKUP_REASON),
-                new HashSet<>(res.excludedGroups().values()));
-            assertTrue("The remaining groups allow a pair: " + res.groups(),
-                res.groups().stream().anyMatch(grp -> grp.size() > 1));
+        assertEquals(Collections.singleton(NO_BACKUP_CACHE_NAME), res.excludedGroups().keySet());
+        assertEquals(Collections.singleton(SafeToStopSetsContextImpl.NO_BACKUP_REASON),
+            new HashSet<>(res.excludedGroups().values()));
+        assertTrue("The remaining groups allow a pair: " + res.groups(),
+            res.groups().stream().anyMatch(grp -> grp.size() > 1));
 
-            // The remaining group has backups = 2 among 4 nodes, so a group of two is the largest safe one.
-            for (List<UUID> grp : res.groups())
-                assertTrue("Groups are bounded by the remaining group's copy bound: " + grp, grp.size() <= 2);
-        }
+        // The remaining group has backups = 2 among 4 nodes, so a group of two is the largest safe one.
+        for (List<UUID> grp : res.groups())
+            assertTrue("Groups are bounded by the remaining group's copy bound: " + grp, grp.size() <= 2);
     }
 
     /**
@@ -253,7 +251,7 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
 
         SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
 
-        arg.noBackup(SafeToStopSetsNoBackupMode.IGNORE);
+        arg.noBackup(true);
 
         try {
             executeTask(arg);

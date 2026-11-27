@@ -329,7 +329,7 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
      * A cache group without backups leaves the snapshot entirely when the exclusion is requested: it is absent
      * from the group configuration, from the affinity view, from the configuration-level blockers and from the
      * partition owners; its name is reported so the operator can be told what the answer does not cover. The
-     * exclusion is opt-in: {@code null} keeps every group.
+     * exclusion is opt-in: {@code false} keeps every group.
      *
      * @throws Exception If failed.
      */
@@ -356,30 +356,28 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
         assertTrue("The exclusion must be opt-in: " + kept.excludedCacheGroups(),
             kept.excludedCacheGroups().isEmpty());
 
-        for (SafeToStopSetsNoBackupMode mode : SafeToStopSetsNoBackupMode.values()) {
-            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0), mode);
+        SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0), true);
 
-            assertEquals(Collections.singleton(CACHE_NAME), ctx.cacheGroups().keySet());
-            assertEquals("The excluded groups are reported in the group name order",
-                Arrays.asList(NO_BACKUP_BLOCKED_CACHE_NAME, NO_BACKUP_CACHE_NAME),
-                new ArrayList<>(ctx.excludedCacheGroups().keySet()));
-            assertEquals("Every exclusion carries the reason of the exclusion",
-                Collections.singleton(SafeToStopSetsContextImpl.NO_BACKUP_REASON),
-                new HashSet<>(ctx.excludedCacheGroups().values()));
+        assertEquals(Collections.singleton(CACHE_NAME), ctx.cacheGroups().keySet());
+        assertEquals("The excluded groups are reported in the group name order",
+            Arrays.asList(NO_BACKUP_BLOCKED_CACHE_NAME, NO_BACKUP_CACHE_NAME),
+            new ArrayList<>(ctx.excludedCacheGroups().keySet()));
+        assertEquals("Every exclusion carries the reason of the exclusion",
+            Collections.singleton(SafeToStopSetsContextImpl.NO_BACKUP_REASON),
+            new HashSet<>(ctx.excludedCacheGroups().values()));
 
-            assertTrue("The configuration of an excluded group must not block the answer: " + ctx.configOnlyBlockers(),
-                ctx.configOnlyBlockers().isEmpty());
+        assertTrue("The configuration of an excluded group must not block the answer: " + ctx.configOnlyBlockers(),
+            ctx.configOnlyBlockers().isEmpty());
 
-            assertNotNull(ctx.affinityNodesCount(CACHE_NAME));
+        assertNotNull(ctx.affinityNodesCount(CACHE_NAME));
 
-            Set<String> ownerGroups = new HashSet<>();
+        Set<String> ownerGroups = new HashSet<>();
 
-            for (PartitionOwners owners : ctx.partitionOwners())
-                ownerGroups.add(owners.cacheGroupName());
+        for (PartitionOwners owners : ctx.partitionOwners())
+            ownerGroups.add(owners.cacheGroupName());
 
-            assertEquals("The partitions of an excluded group must not be read", Collections.singleton(CACHE_NAME),
-                ownerGroups);
-        }
+        assertEquals("The partitions of an excluded group must not be read", Collections.singleton(CACHE_NAME),
+            ownerGroups);
     }
 
     /**
@@ -398,7 +396,7 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
 
         awaitPartitionMapExchange();
 
-        SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0), SafeToStopSetsNoBackupMode.IGNORE);
+        SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0), true);
 
         assertEquals(Collections.singleton(REPL_CACHE_NAME), ctx.cacheGroups().keySet());
         assertTrue("A replicated group must not be excluded: " + ctx.excludedCacheGroups(),
