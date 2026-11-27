@@ -86,8 +86,8 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
         assertEquals(3, res.nodes().size());
         assertFalse("The result must contain at least one group of size > 1", res.groups().isEmpty());
 
-        for (List<UUID> group : res.groups())
-            assertTrue("Groups must not exceed the bound: " + group, group.size() <= 2);
+        for (List<UUID> grp : res.groups())
+            assertTrue("Groups must not exceed the bound: " + grp, grp.size() <= 2);
     }
 
     /**

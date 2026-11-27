@@ -578,7 +578,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
             IgniteBiPredicate<ClusterNode, List<ClusterNode>> affBackupFilter = null;
 
             if (ccfg.getAffinity() instanceof RendezvousAffinityFunction)
-                affBackupFilter = ((RendezvousAffinityFunction) ccfg.getAffinity()).getAffinityBackupFilter();
+                affBackupFilter = ((RendezvousAffinityFunction)ccfg.getAffinity()).getAffinityBackupFilter();
 
             infos.put(grpName,
                 new CacheGroupInfo(grpName, ccfg.getCacheMode(), ccfg.getBackups(),
@@ -592,11 +592,11 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
                 blockers.put(grpName, blocker);
         }
 
-        Map<String, String> exclGroups = noBackup
+        Map<String, String> exclGrps = noBackup
             ? noBackupGroups(grps)
             : Collections.<String, String>emptyMap();
 
-        grps = removeExcluded(grps, exclGroups, infos, blockers);
+        grps = removeExcluded(grps, exclGrps, infos, blockers);
 
         // The strategy sees the groups the operator left in scope, never the ones the cluster-level rule removed:
         // a group without backups is already outside the answer, so the strategy must not report it.
@@ -604,13 +604,13 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
             Map<String, String> declared = SafeToStopSetsSupport.applyExclusions(strategy, strategyOptions, infos);
 
             if (!declared.isEmpty()) {
-                exclGroups = merge(exclGroups, declared);
+                exclGrps = merge(exclGrps, declared);
 
-                grps = removeExcluded(grps, exclGroups, infos, blockers);
+                grps = removeExcluded(grps, exclGrps, infos, blockers);
             }
         }
 
-        snap.excludedGroups = Collections.unmodifiableMap(new TreeMap<>(exclGroups));
+        snap.excludedGroups = Collections.unmodifiableMap(new TreeMap<>(exclGrps));
 
         Map<Integer, AffinityAssignment> affs = new HashMap<>();
         Map<String, Integer> affNodes = new LinkedHashMap<>();
@@ -789,7 +789,7 @@ public class SafeToStopSetsContextImpl implements SafeToStopSetsContext {
         if (aff.getClass() != RendezvousAffinityFunction.class)
             return "affinity is " + aff.getClass().getName() + ", not RendezvousAffinityFunction";
 
-        RendezvousAffinityFunction r = (RendezvousAffinityFunction) aff;
+        RendezvousAffinityFunction r = (RendezvousAffinityFunction)aff;
 
         if (!r.isExcludeNeighbors() && (r.getAffinityBackupFilter() != null || r.getBackupFilter() != null))
             return "copy filters are set without excludeNeighbors";

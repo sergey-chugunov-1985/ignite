@@ -549,11 +549,11 @@ public class SafeToStopSetsSupportSelfTest {
     public void testVerifyConfigOnlyReplicatedWithinBound() throws Exception {
         List<UUID> nodes = ids(6);
 
-        Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
-        groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.REPLICATED, Integer.MAX_VALUE,
+        Map<String, CacheGroupInfo> grps = new LinkedHashMap<>();
+        grps.put(GRP, new CacheGroupInfo(GRP, CacheMode.REPLICATED, Integer.MAX_VALUE,
             PartitionLossPolicy.READ_WRITE_SAFE, null));
 
-        TestSafeToStopSetsContext ctx = new TestSafeToStopSetsContext(nodes, groups,
+        TestSafeToStopSetsContext ctx = new TestSafeToStopSetsContext(nodes, grps,
             Collections.singletonMap(GRP, 4), Collections.emptyList());
 
         // copies = |affinityNodes| = 4, maxSafeGroupSize = 3; groups of 2 are within the bound.
@@ -881,7 +881,7 @@ public class SafeToStopSetsSupportSelfTest {
      */
     @Test
     public void testApplyExclusionsProjectsOntoGroups() throws Exception {
-        Map<String, CacheGroupInfo> groups = groups("a", "b", "c");
+        Map<String, CacheGroupInfo> grps = groups("a", "b", "c");
 
         Map<String, String> declared = new LinkedHashMap<>();
         declared.put("c", "no cell");
@@ -889,15 +889,15 @@ public class SafeToStopSetsSupportSelfTest {
 
         ExcludingStrategy strategy = new ExcludingStrategy(declared);
 
-        Map<String, String> res = SafeToStopSetsSupport.applyExclusions(strategy, options("skip", ""), groups);
+        Map<String, String> res = SafeToStopSetsSupport.applyExclusions(strategy, options("skip", ""), grps);
 
         assertEquals("The result is ordered by group name", Arrays.asList("a", "c"), new ArrayList<>(res.keySet()));
         assertEquals("no cell", res.get("a"));
 
         assertEquals("The strategy must see the options of the run", options("skip", ""), strategy.seenOptions);
-        assertEquals("The strategy must see the groups as they are", groups, strategy.seenGroups);
+        assertEquals("The strategy must see the groups as they are", grps, strategy.seenGroups);
         assertEquals("The declaration of the strategy must not be modified", declared, strategy.declared);
-        assertEquals("The input groups must not be modified", Arrays.asList("a", "b", "c"), new ArrayList<>(groups.keySet()));
+        assertEquals("The input groups must not be modified", Arrays.asList("a", "b", "c"), new ArrayList<>(grps.keySet()));
     }
 
     /**
@@ -1155,10 +1155,10 @@ public class SafeToStopSetsSupportSelfTest {
      * @return Fake snapshot with the one {@code PARTITIONED} group.
      */
     private static TestSafeToStopSetsContext ctx(List<UUID> nodes, List<PartitionOwners> owners, int backups) {
-        Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
-        groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, backups, PartitionLossPolicy.READ_WRITE_SAFE, null));
+        Map<String, CacheGroupInfo> grps = new LinkedHashMap<>();
+        grps.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, backups, PartitionLossPolicy.READ_WRITE_SAFE, null));
 
-        return new TestSafeToStopSetsContext(nodes, groups, new LinkedHashMap<>(), owners);
+        return new TestSafeToStopSetsContext(nodes, grps, new LinkedHashMap<>(), owners);
     }
 
     /**

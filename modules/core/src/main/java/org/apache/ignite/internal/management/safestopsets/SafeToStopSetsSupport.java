@@ -250,11 +250,11 @@ public final class SafeToStopSetsSupport {
         int smallest = Integer.MAX_VALUE;
 
         for (CacheGroupInfo grp : ctx.cacheGroups().values()) {
-            int affinityNodes = ctx.affinityNodesCount(grp.name());
+            int affNodes = ctx.affinityNodesCount(grp.name());
 
             int copies = grp.mode() == CacheMode.REPLICATED
-                ? affinityNodes
-                : Math.min(grp.backups() + 1, affinityNodes);
+                ? affNodes
+                : Math.min(grp.backups() + 1, affNodes);
 
             smallest = Math.min(smallest, copies);
         }
@@ -308,7 +308,7 @@ public final class SafeToStopSetsSupport {
                 if (!edge.get(idx))
                     continue;
 
-                BitSet required = (BitSet) edge.clone();
+                BitSet required = (BitSet)edge.clone();
 
                 required.clear(idx);
                 requireds.add(required);
@@ -644,7 +644,7 @@ public final class SafeToStopSetsSupport {
                     if (target.cardinality() >= maxGroupSize)
                         continue;
 
-                    BitSet candidate = (BitSet) target.clone();
+                    BitSet candidate = (BitSet)target.clone();
                     candidate.set(v);
 
                     if (hg.violations(candidate) == 0 && target.cardinality() < bestDirectSize) {
@@ -678,7 +678,7 @@ public final class SafeToStopSetsSupport {
 
                         iterations++;
 
-                        BitSet newTarget = (BitSet) target.clone();
+                        BitSet newTarget = (BitSet)target.clone();
                         newTarget.clear(u);
                         newTarget.set(v);
 
@@ -705,7 +705,7 @@ public final class SafeToStopSetsSupport {
                             if (other.cardinality() >= maxGroupSize)
                                 continue;
 
-                            BitSet cand = (BitSet) other.clone();
+                            BitSet cand = (BitSet)other.clone();
                             cand.set(u);
 
                             if (hg.violations(cand) == 0 && other.cardinality() < mergeToSize) {
@@ -752,7 +752,7 @@ public final class SafeToStopSetsSupport {
      */
     private static boolean conflicts(List<BitSet> requireds, BitSet grp) {
         for (BitSet required : requireds) {
-            BitSet rest = (BitSet) required.clone();
+            BitSet rest = (BitSet)required.clone();
 
             rest.andNot(grp);
 

@@ -62,20 +62,20 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
         if (!blockers.isEmpty())
             throw new IllegalArgumentException(configOnlyFailure(blockers));
 
-        int maxGroupSize = SafeToStopSetsSupport.maxSafeGroupSize(ctx);
+        int maxGrpSize = SafeToStopSetsSupport.maxSafeGroupSize(ctx);
 
         if (!ctx.ownershipMatchesAffinity())
             return splitByOwners(ctx);
 
-        if (maxGroupSize <= 1)
+        if (maxGrpSize <= 1)
             return singletons(ctx.nodes());
 
-        return roundRobin(ctx.nodes(), maxGroupSize);
+        return roundRobin(ctx.nodes(), maxGrpSize);
     }
 
     /**
      * Deals the snapshot nodes round-robin over the groups: the number of groups is the ceiling of
-     * {@code nodes / maxGroupSize}, so no group exceeds the bound, the sizes differ by at most one, and the
+     * {@code nodes / maxGrpSize}, so no group exceeds the bound, the sizes differ by at most one, and the
      * result is deterministic because the nodes are ordered by consistent ID.
      * <p>
      * The bound is clamped by the cluster size before the number of groups is computed: a snapshot without a
@@ -85,11 +85,11 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
      * correct answer there: nothing is lost by stopping them together.
      *
      * @param nodes Snapshot nodes, ordered by consistent ID.
-     * @param maxGroupSize Maximum size of a group, at least {@code 2}.
-     * @return Groups of node IDs, each of size no more than {@code maxGroupSize}.
+     * @param maxGrpSize Maximum size of a group, at least {@code 2}.
+     * @return Groups of node IDs, each of size no more than {@code maxGrpSize}.
      */
-    private static List<List<UUID>> roundRobin(List<ClusterNode> nodes, int maxGroupSize) {
-        int bound = Math.max(1, Math.min(maxGroupSize, nodes.size()));
+    private static List<List<UUID>> roundRobin(List<ClusterNode> nodes, int maxGrpSize) {
+        int bound = Math.max(1, Math.min(maxGrpSize, nodes.size()));
 
         int grps = (int)((nodes.size() + (long)bound - 1) / bound);
 
@@ -132,14 +132,14 @@ public class BackupsCountSafeToStopSetsStrategy implements SafeToStopSetsStrateg
 
         SafeToStopSetsHypergraph hg = SafeToStopSetsSupport.hypergraph(ctx);
 
-        int maxGroupSize = SafeToStopSetsSupport.maxSafeGroupSize(ctx);
+        int maxGrpSize = SafeToStopSetsSupport.maxSafeGroupSize(ctx);
 
-        if (maxGroupSize < 2)
+        if (maxGrpSize < 2)
             return SafeToStopSetsSupport.singletons(ctx.nodes());
 
-        List<List<UUID>> result = SafeToStopSetsSupport.greedy(hg, ctx.nodes(), maxGroupSize);
+        List<List<UUID>> result = SafeToStopSetsSupport.greedy(hg, ctx.nodes(), maxGrpSize);
 
-        return SafeToStopSetsSupport.repair(result, hg, ctx.nodes(), maxGroupSize);
+        return SafeToStopSetsSupport.repair(result, hg, ctx.nodes(), maxGrpSize);
     }
 
     /**

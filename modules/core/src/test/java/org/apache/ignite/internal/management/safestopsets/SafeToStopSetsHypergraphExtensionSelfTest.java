@@ -501,10 +501,10 @@ public class SafeToStopSetsHypergraphExtensionSelfTest {
      * @return Fake snapshot with the one {@code PARTITIONED} group.
      */
     private static TestSafeToStopSetsContext ctx(List<UUID> nodes, List<PartitionOwners> owners) {
-        Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
-        groups.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, 1, PartitionLossPolicy.READ_WRITE_SAFE, null));
+        Map<String, CacheGroupInfo> grps = new LinkedHashMap<>();
+        grps.put(GRP, new CacheGroupInfo(GRP, CacheMode.PARTITIONED, 1, PartitionLossPolicy.READ_WRITE_SAFE, null));
 
-        return new TestSafeToStopSetsContext(nodes, groups, new LinkedHashMap<>(), owners);
+        return new TestSafeToStopSetsContext(nodes, grps, new LinkedHashMap<>(), owners);
     }
 
     /**

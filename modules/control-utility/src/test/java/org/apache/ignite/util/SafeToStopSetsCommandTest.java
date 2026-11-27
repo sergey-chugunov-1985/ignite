@@ -115,14 +115,14 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
             "Groups (stop the nodes of one group at a time, then re-run this command):");
 
         // With backups = 2 and 4 rendezvous nodes the greedy pass produces exactly two groups of two.
-        int groupLines = 0;
+        int grpLines = 0;
 
         for (String line : out.split("\\r?\\n")) {
             if (line.matches(" *\\[\\d+\\] \\S+, \\S+"))
-                groupLines++;
+                grpLines++;
         }
 
-        assertEquals("Expected two groups of two nodes, output:\n" + out, 2, groupLines);
+        assertEquals("Expected two groups of two nodes, output:\n" + out, 2, grpLines);
         assertFalse("Singletons must be absent, output:\n" + out, out.contains("Singletons"));
     }
 
@@ -272,7 +272,7 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
         GridTestUtils.assertContains(log, out,
             "Groups (stop the nodes of one group at a time, then re-run this command):");
 
-        SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult) lastOperationResult;
+        SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult)lastOperationResult;
 
         UUID clientId = grid(CLIENT_NODE_NAME_PREFIX).localNode().id();
 
@@ -336,12 +336,12 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
         // grid(0) is the coordinator (lowest order()); the computation is mapped there in every run.
         exec(EXIT_CODE_OK, "--port", connectorPort(grid(0)), SAFE_TO_STOP_SETS);
 
-        SafeToStopSetsTaskResult viaCoordinator = (SafeToStopSetsTaskResult) lastOperationResult;
+        SafeToStopSetsTaskResult viaCoordinator = (SafeToStopSetsTaskResult)lastOperationResult;
 
         for (int i = 1; i < 3; i++) {
             exec(EXIT_CODE_OK, "--port", connectorPort(grid(i)), SAFE_TO_STOP_SETS);
 
-            SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult) lastOperationResult;
+            SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult)lastOperationResult;
 
             assertEquals("topVer must not depend on the connection node",
                 viaCoordinator.topVer(), res.topVer());
@@ -377,7 +377,7 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
         GridTestUtils.assertContains(log, excluded, "Excluded cache groups (not covered by this answer):");
         GridTestUtils.assertContains(log, excluded, "  " + NO_BACKUP_CACHE_NAME + " - has no backups");
 
-        SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult) lastOperationResult;
+        SafeToStopSetsTaskResult res = (SafeToStopSetsTaskResult)lastOperationResult;
 
         assertEquals(Collections.singleton(NO_BACKUP_CACHE_NAME), res.excludedGroups().keySet());
     }
@@ -543,7 +543,7 @@ public class SafeToStopSetsCommandTest extends GridCommandHandlerAbstractTest {
      */
     private void waitForOwnershipMatched() throws Exception {
         assertTrue("The ownership did not settle to match the affinity", GridTestUtils.waitForCondition(() -> {
-            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl((IgniteEx) grid(0));
+            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl((IgniteEx)grid(0));
 
             return ctx.partitionOwnersAvailable() && ctx.ownershipMatchesAffinity();
         }, 15_000));

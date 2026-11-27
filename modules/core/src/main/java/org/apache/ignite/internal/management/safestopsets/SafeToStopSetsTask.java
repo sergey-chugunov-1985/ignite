@@ -159,11 +159,11 @@ public class SafeToStopSetsTask
                     + String.join("; ", verification.violations()));
 
             String start = ctx.topologyVersion();
-            String current = ctx.currentTopologyVersion();
+            String cur = ctx.currentTopologyVersion();
 
-            if (!start.equals(current))
+            if (!start.equals(cur))
                 throw new IllegalArgumentException("unstable: topology changed during computation: "
-                    + start + " -> " + current + ", retry");
+                    + start + " -> " + cur + ", retry");
 
             if (grps.stream().noneMatch(grp -> grp.size() > 1))
                 throw noSafeGroup(ctx);

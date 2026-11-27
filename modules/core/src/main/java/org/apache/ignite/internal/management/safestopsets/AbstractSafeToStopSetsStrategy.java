@@ -52,16 +52,16 @@ public abstract class AbstractSafeToStopSetsStrategy implements SafeToStopSetsSt
 
         List<ClusterNode> order = orderNodes(ctx);
 
-        int maxGroupSize = maxGroupSize(ctx);
+        int maxGrpSize = maxGroupSize(ctx);
 
-        if (maxGroupSize < 1)
+        if (maxGrpSize < 1)
             throw new IllegalArgumentException(
-                getClass().getName() + ": maxGroupSize must be >= 1, got " + maxGroupSize);
+                getClass().getName() + ": maxGroupSize must be >= 1, got " + maxGrpSize);
 
-        List<List<UUID>> result = SafeToStopSetsSupport.greedy(hg, order, maxGroupSize);
+        List<List<UUID>> result = SafeToStopSetsSupport.greedy(hg, order, maxGrpSize);
 
-        if (repairEnabled() && maxGroupSize > 1)
-            result = SafeToStopSetsSupport.repair(result, hg, order, maxGroupSize);
+        if (repairEnabled() && maxGrpSize > 1)
+            result = SafeToStopSetsSupport.repair(result, hg, order, maxGrpSize);
 
         return result;
     }

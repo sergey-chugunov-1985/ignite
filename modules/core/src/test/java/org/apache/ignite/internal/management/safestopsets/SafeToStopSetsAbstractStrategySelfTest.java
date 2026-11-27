@@ -181,14 +181,14 @@ public class SafeToStopSetsAbstractStrategySelfTest {
     public void testDefaultBoundIsSmallestOverGroups() throws Exception {
         List<UUID> nodes = ids(6);
 
-        Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
-        groups.put(GRP, grp(GRP, 2));
-        groups.put(GRP2, repl(GRP2));
+        Map<String, CacheGroupInfo> grps = new LinkedHashMap<>();
+        grps.put(GRP, grp(GRP, 2));
+        grps.put(GRP2, repl(GRP2));
 
         // The partitioned group has min(2 + 1, 6) = 3 copies, the replicated one has 2: the replicated group
         // binds the answer, so no two nodes may be stopped together.
         TestSafeToStopSetsContext ctx = new TestSafeToStopSetsContext(
-            nodes, groups, aff(GRP, 6, GRP2, 2), Collections.emptyList());
+            nodes, grps, aff(GRP, 6, GRP2, 2), Collections.emptyList());
 
         assertEquals(1, SafeToStopSetsSupport.maxSafeGroupSize(ctx));
     }
@@ -286,10 +286,10 @@ public class SafeToStopSetsAbstractStrategySelfTest {
         List<UUID> nodes,
         CacheGroupInfo grp,
         Map<String, Integer> affinityNodes) {
-        Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
-        groups.put(grp.name(), grp);
+        Map<String, CacheGroupInfo> grps = new LinkedHashMap<>();
+        grps.put(grp.name(), grp);
 
-        return new TestSafeToStopSetsContext(nodes, groups, affinityNodes, Collections.emptyList());
+        return new TestSafeToStopSetsContext(nodes, grps, affinityNodes, Collections.emptyList());
     }
 
     /**

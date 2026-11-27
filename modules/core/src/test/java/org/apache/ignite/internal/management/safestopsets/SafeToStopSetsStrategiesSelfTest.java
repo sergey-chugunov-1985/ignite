@@ -98,7 +98,8 @@ public class SafeToStopSetsStrategiesSelfTest {
                 SafeToStopSetsStrategies.resolve("nope");
 
                 fail("Unknown strategy name must fail");
-            } catch (IllegalArgumentException e) {
+            }
+            catch (IllegalArgumentException e) {
                 assertTrue(e.getMessage(), e.getMessage().contains("nope"));
                 assertTrue(e.getMessage(), e.getMessage().contains(BackupsCountSafeToStopSetsStrategy.NAME));
                 assertTrue(e.getMessage(), e.getMessage().contains(TestOwnersSafeToStopSetsStrategy.NAME));
@@ -119,7 +120,8 @@ public class SafeToStopSetsStrategiesSelfTest {
                 SafeToStopSetsStrategies.resolve(BackupsCountSafeToStopSetsStrategy.NAME);
 
                 fail("A missing provider must fail");
-            } catch (IllegalArgumentException e) {
+            }
+            catch (IllegalArgumentException e) {
                 assertTrue(e.getMessage(), e.getMessage().contains("[]"));
             }
         });
@@ -157,7 +159,8 @@ public class SafeToStopSetsStrategiesSelfTest {
                 SafeToStopSetsStrategies.resolve("test-broken");
 
                 fail("A broken provider must fail");
-            } catch (IgniteException e) {
+            }
+            catch (IgniteException e) {
                 String msg = e.getMessage();
 
                 assertTrue(msg, msg.contains(BrokenSafeToStopSetsStrategy.class.getName()));
@@ -175,7 +178,8 @@ public class SafeToStopSetsStrategiesSelfTest {
             SafeToStopSetsStrategies.resolve(requestedName);
 
             fail("Duplicate strategy name must fail");
-        } catch (IllegalArgumentException e) {
+        }
+        catch (IllegalArgumentException e) {
             assertTrue(e.getMessage(), e.getMessage().contains(BackupsCountSafeToStopSetsStrategy.class.getName()));
             assertTrue(e.getMessage(), e.getMessage().contains(TestDuplicateNameSafeToStopSetsStrategy.class.getName()));
         }
@@ -216,7 +220,8 @@ public class SafeToStopSetsStrategiesSelfTest {
 
         try {
             body.run();
-        } finally {
+        }
+        finally {
             Thread.currentThread().setContextClassLoader(original);
 
             Files.deleteIfExists(file);
@@ -247,7 +252,8 @@ public class SafeToStopSetsStrategiesSelfTest {
 
                 try {
                     return file.toUri().toURL();
-                } catch (MalformedURLException e) {
+                }
+                catch (MalformedURLException e) {
                     throw new IllegalStateException(e);
                 }
             }

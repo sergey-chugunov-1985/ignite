@@ -85,13 +85,13 @@ public class SafeToStopSetsBackupsCountStrategySelfTest {
     public void testMinBoundOverGroups() throws Exception {
         List<UUID> nodes = ids(7);
 
-        Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
-        groups.put(GRP, grp(GRP, 2));
-        groups.put(GRP2, repl(GRP2));
+        Map<String, CacheGroupInfo> grps = new LinkedHashMap<>();
+        grps.put(GRP, grp(GRP, 2));
+        grps.put(GRP2, repl(GRP2));
 
         // The partitioned group bounds the answer: backups = 2, |affinityNodes| = 7, copies = 3.
         // The replicated group has 4 affinity nodes, copies = 4, and does not change the bound.
-        TestSafeToStopSetsContext ctx = ctx(nodes, groups, aff(GRP, 7, GRP2, 4), Collections.emptyList());
+        TestSafeToStopSetsContext ctx = ctx(nodes, grps, aff(GRP, 7, GRP2, 4), Collections.emptyList());
 
         List<List<UUID>> res = new BackupsCountSafeToStopSetsStrategy().split(ctx);
 
@@ -434,10 +434,10 @@ public class SafeToStopSetsBackupsCountStrategySelfTest {
         CacheGroupInfo grp,
         Map<String, Integer> affinityNodes,
         List<PartitionOwners> owners) {
-        Map<String, CacheGroupInfo> groups = new LinkedHashMap<>();
-        groups.put(grp.name(), grp);
+        Map<String, CacheGroupInfo> grps = new LinkedHashMap<>();
+        grps.put(grp.name(), grp);
 
-        return new TestSafeToStopSetsContext(nodes, groups, affinityNodes, owners);
+        return new TestSafeToStopSetsContext(nodes, grps, affinityNodes, owners);
     }
 
     /**

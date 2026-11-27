@@ -71,12 +71,12 @@ public final class SafeToStopSetsHypergraph {
         this.nodes = nodes;
         this.edges = edges;
 
-        Map<UUID, Integer> index = new HashMap<>(nodes.size() * 2);
+        Map<UUID, Integer> nodeIdx = new HashMap<>(nodes.size() * 2);
 
         for (int i = 0; i < nodes.size(); i++)
-            index.put(nodes.get(i).id(), i);
+            nodeIdx.put(nodes.get(i).id(), i);
 
-        this.nodeIndex = Collections.unmodifiableMap(index);
+        this.nodeIndex = Collections.unmodifiableMap(nodeIdx);
 
         int min = 0;
         int max = 0;
@@ -165,10 +165,10 @@ public final class SafeToStopSetsHypergraph {
         Collection<List<UUID>> edges,
         @Nullable List<String> origins
     ) {
-        Map<UUID, Integer> index = new HashMap<>(nodes.size() * 2);
+        Map<UUID, Integer> nodeIdx = new HashMap<>(nodes.size() * 2);
 
         for (int i = 0; i < nodes.size(); i++)
-            index.put(nodes.get(i).id(), i);
+            nodeIdx.put(nodes.get(i).id(), i);
 
         Set<BitSet> distinct = new HashSet<>();
 
@@ -178,7 +178,7 @@ public final class SafeToStopSetsHypergraph {
             BitSet edge = new BitSet(nodes.size());
 
             for (UUID nodeId : nodeIds) {
-                Integer idx = index.get(nodeId);
+                Integer idx = nodeIdx.get(nodeId);
 
                 if (idx == null)
                     throw new IllegalStateException(foreignNodeMsg(origins, nodeId, edgeIdx));
@@ -321,7 +321,7 @@ public final class SafeToStopSetsHypergraph {
      * @return {@code true} if every bit of {@code smaller} is set in {@code superset}.
      */
     private static boolean contains(BitSet smaller, BitSet superset) {
-        BitSet rest = (BitSet) smaller.clone();
+        BitSet rest = (BitSet)smaller.clone();
 
         rest.andNot(superset);
 

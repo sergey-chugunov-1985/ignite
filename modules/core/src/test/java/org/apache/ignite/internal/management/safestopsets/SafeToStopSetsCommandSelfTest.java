@@ -326,25 +326,25 @@ public class SafeToStopSetsCommandSelfTest {
         Map<String, String> excludedGroups
     ) {
         List<SafeToStopSetsNodeInfo> nodes = new ArrayList<>();
-        List<List<UUID>> nodeGroups = new ArrayList<>();
+        List<List<UUID>> nodeGrps = new ArrayList<>();
 
-        for (List<String> group : groups) {
-            List<UUID> ids = new ArrayList<>(group.size());
+        for (List<String> grp : groups) {
+            List<UUID> ids = new ArrayList<>(grp.size());
 
-            for (String id : group) {
+            for (String id : grp) {
                 UUID nodeId = UUID.randomUUID();
 
                 ids.add(nodeId);
                 nodes.add(new SafeToStopSetsNodeInfo(nodeId, id, "127.0.0.1"));
             }
 
-            nodeGroups.add(ids);
+            nodeGrps.add(ids);
         }
 
         return new SafeToStopSetsTaskResult(
             nodes,
             7,
-            nodeGroups,
+            nodeGrps,
             mode,
             notVerified,
             BackupsCountSafeToStopSetsStrategy.NAME,

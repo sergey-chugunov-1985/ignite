@@ -372,13 +372,13 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
 
         assertNotNull(ctx.affinityNodesCount(CACHE_NAME));
 
-        Set<String> ownerGroups = new HashSet<>();
+        Set<String> ownerGrps = new HashSet<>();
 
         for (PartitionOwners owners : ctx.partitionOwners())
-            ownerGroups.add(owners.cacheGroupName());
+            ownerGrps.add(owners.cacheGroupName());
 
         assertEquals("The partitions of an excluded group must not be read", Collections.singleton(CACHE_NAME),
-            ownerGroups);
+            ownerGrps);
     }
 
     /**
@@ -476,13 +476,13 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
             // Expected: the excluded group is not part of the snapshot at all.
         }
 
-        Set<String> ownerGroups = new HashSet<>();
+        Set<String> ownerGrps = new HashSet<>();
 
         for (PartitionOwners owners : ctx.partitionOwners())
-            ownerGroups.add(owners.cacheGroupName());
+            ownerGrps.add(owners.cacheGroupName());
 
         assertEquals("The partitions of an excluded group must not be read", Collections.singleton(CACHE_NAME),
-            ownerGroups);
+            ownerGrps);
     }
 
     /**

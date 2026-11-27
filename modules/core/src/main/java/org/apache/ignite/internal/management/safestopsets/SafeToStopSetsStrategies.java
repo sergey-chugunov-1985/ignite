@@ -80,7 +80,8 @@ public final class SafeToStopSetsStrategies {
                 if (found == null && strategyName.equals(name))
                     found = strategy;
             }
-        } catch (ServiceConfigurationError | LinkageError e) {
+        }
+        catch (ServiceConfigurationError | LinkageError e) {
             throw new IgniteException("Failed to load safe-to-stop-sets strategies: " + e.getMessage(), e);
         }
 

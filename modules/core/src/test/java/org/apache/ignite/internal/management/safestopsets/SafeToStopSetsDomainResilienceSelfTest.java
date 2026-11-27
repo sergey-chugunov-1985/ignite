@@ -182,7 +182,7 @@ public class SafeToStopSetsDomainResilienceSelfTest extends GridCommonAbstractTe
      * @return Snapshot of the cluster state as it is read on {@code grid(0)}, the coordinator.
      */
     private SafeToStopSetsContextImpl context() {
-        return new SafeToStopSetsContextImpl((IgniteEx) grid(0));
+        return new SafeToStopSetsContextImpl((IgniteEx)grid(0));
     }
 
     /**
@@ -193,7 +193,7 @@ public class SafeToStopSetsDomainResilienceSelfTest extends GridCommonAbstractTe
      */
     private void awaitOwnersAvailable() throws Exception {
         assertTrue("The partition owners did not become available", GridTestUtils.waitForCondition(
-            () -> new SafeToStopSetsContextImpl((IgniteEx) grid(0)).partitionOwnersAvailable(), 15_000));
+            () -> new SafeToStopSetsContextImpl((IgniteEx)grid(0)).partitionOwnersAvailable(), 15_000));
     }
 
     /**
