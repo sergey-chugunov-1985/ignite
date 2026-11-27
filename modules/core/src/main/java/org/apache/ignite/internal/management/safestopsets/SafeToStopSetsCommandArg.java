@@ -46,6 +46,16 @@ public class SafeToStopSetsCommandArg extends IgniteDataTransferObject {
             + "reason")
     boolean noBackup;
 
+    /**
+     * Options of the strategy, each one a name or a {@code name=value} pair. The core does not interpret the
+     * values, it only checks the syntax and that the strategy declares the name in
+     * {@link SafeToStopSetsStrategy#supportedOptions()}.
+     */
+    @Order(2)
+    @Argument(example = "option1,option2=value", optional = true,
+        description = "Comma separated options of the strategy, each one 'name' or 'name=value'")
+    String[] strategyOptions;
+
     /** @return Name of the strategy. */
     public String strategy() {
         return strategy;
@@ -64,6 +74,16 @@ public class SafeToStopSetsCommandArg extends IgniteDataTransferObject {
     /** @param noBackup Whether the cache groups that have no backups leave the computation. */
     public void noBackup(boolean noBackup) {
         this.noBackup = noBackup;
+    }
+
+    /** @return Options of the strategy as they were given on the command line. */
+    public String[] strategyOptions() {
+        return strategyOptions;
+    }
+
+    /** @param strategyOptions Options of the strategy as given on the command line. */
+    public void strategyOptions(String[] strategyOptions) {
+        this.strategyOptions = strategyOptions;
     }
 
     /** {@inheritDoc} */

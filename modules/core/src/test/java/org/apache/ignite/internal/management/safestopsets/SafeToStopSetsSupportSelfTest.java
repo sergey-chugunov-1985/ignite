@@ -21,8 +21,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.PartitionLossPolicy;
@@ -661,6 +663,213 @@ public class SafeToStopSetsSupportSelfTest {
     }
 
     // ---------------------------------------------------------------------
+    // Strategy options
+    // ---------------------------------------------------------------------
+
+    /**
+     * No {@code --strategy-options} is not an error: the run has an empty option map, which is what the
+     * strategies see by default.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testParseStrategyOptionsAbsent() throws Exception {
+        assertTrue(SafeToStopSetsSupport.parseStrategyOptions(null).isEmpty());
+        assertTrue(SafeToStopSetsSupport.parseStrategyOptions(new String[0]).isEmpty());
+    }
+
+    /**
+     * A token is a name (the option is present with an empty value) or a {@code name=value} pair; the first
+     * {@code '='} divides them, so a value may carry {@code '='}, and both parts are trimmed.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testParseStrategyOptionsForms() throws Exception {
+        assertEquals(options("a", ""), SafeToStopSetsSupport.parseStrategyOptions(new String[] {"a"}));
+        assertEquals("'name=' is the same as presence", options("a", ""),
+            SafeToStopSetsSupport.parseStrategyOptions(new String[] {"a="}));
+        assertEquals("Only the first '=' divides", options("a", "x=y"),
+            SafeToStopSetsSupport.parseStrategyOptions(new String[] {"a=x=y"}));
+        assertEquals("The name and the value are trimmed", options("a", "1"),
+            SafeToStopSetsSupport.parseStrategyOptions(new String[] {" a = 1 "}));
+        assertEquals("The case of the name is kept", options("A", "1"),
+            SafeToStopSetsSupport.parseStrategyOptions(new String[] {"A=1"}));
+
+        Map<String, String> both = new LinkedHashMap<>();
+
+        both.put("a", "1");
+        both.put("b", "2");
+
+        assertEquals(both, SafeToStopSetsSupport.parseStrategyOptions(new String[] {"b=2", "a=1"}));
+    }
+
+    /**
+     * The result is ordered by name and immutable: the strategy cannot change the options of the run through
+     * the map it receives.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testParseStrategyOptionsOrderedAndImmutable() throws Exception {
+        Map<String, String> res = SafeToStopSetsSupport.parseStrategyOptions(new String[] {"c", "a=1", "b=2"});
+
+        assertEquals("The options are ordered by name", Arrays.asList("a", "b", "c"), new ArrayList<>(res.keySet()));
+
+        try {
+            res.put("d", "");
+
+            fail("The options of the run must be immutable");
+        }
+        catch (UnsupportedOperationException ignored) {
+            // Expected.
+        }
+    }
+
+    /**
+     * An empty token comes from a stray comma: the message names the whole raw list, so the operator sees
+     * where the comma is wrong.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testParseStrategyOptionsRejectsEmptyToken() throws Exception {
+        try {
+            SafeToStopSetsSupport.parseStrategyOptions(new String[] {"a", "", "b"});
+
+            fail("An empty option must be an operator error");
+        }
+        catch (IllegalArgumentException expected) {
+            String msg = expected.getMessage();
+
+            assertTrue(msg, msg.contains("Empty strategy option"));
+            assertTrue(msg, msg.contains("'--strategy-options a,,b'"));
+        }
+    }
+
+    /**
+     * A token without a name is a typo of the operator: the message shows the option form.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testParseStrategyOptionsRejectsMissingName() throws Exception {
+        try {
+            SafeToStopSetsSupport.parseStrategyOptions(new String[] {"=1"});
+
+            fail("An option without a name must be an operator error");
+        }
+        catch (IllegalArgumentException expected) {
+            String msg = expected.getMessage();
+
+            assertTrue(msg, msg.contains("has no name"));
+            assertTrue(msg, msg.contains("'name' or 'name=value'"));
+        }
+    }
+
+    /**
+     * A name outside {@code [A-Za-z0-9._-]} cannot be declared by a strategy, so it is rejected with the name
+     * alone: the value is not what has to be fixed.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testParseStrategyOptionsRejectsMalformedName() throws Exception {
+        try {
+            SafeToStopSetsSupport.parseStrategyOptions(new String[] {"bad name=1"});
+
+            fail("A malformed option name must be an operator error");
+        }
+        catch (IllegalArgumentException expected) {
+            String msg = expected.getMessage();
+
+            assertTrue(msg, msg.contains("Invalid strategy option name [name='bad name']"));
+            assertTrue(msg, msg.contains("only letters, digits, '.', '_' and '-' are allowed"));
+        }
+    }
+
+    /**
+     * The same name twice is ambiguous: the operator must not guess which value the strategy received.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testParseStrategyOptionsRejectsDuplicate() throws Exception {
+        try {
+            SafeToStopSetsSupport.parseStrategyOptions(new String[] {"a=1", "a=2"});
+
+            fail("A repeated option must be an operator error");
+        }
+        catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("Duplicate strategy option [name='a']"));
+        }
+    }
+
+    /**
+     * The declared options of the run pass the check, values included: the core never interprets them.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testCheckOptionsAcceptsSupported() throws Exception {
+        SafeToStopSetsSupport.checkOptions(new OptionsStrategy("bar", "baz"), Collections.emptyMap());
+
+        Map<String, String> options = new LinkedHashMap<>();
+
+        options.put("bar", "");
+        options.put("baz", "any value");
+
+        SafeToStopSetsSupport.checkOptions(new OptionsStrategy("bar", "baz"), options);
+    }
+
+    /**
+     * An undeclared option is an operator error reported before the cluster is read: the message lists the
+     * given and the supported names, both ordered by name.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testCheckOptionsRejectsUnsupported() throws Exception {
+        Map<String, String> options = new LinkedHashMap<>();
+
+        options.put("foo", "");
+        options.put("bar", "1");
+
+        try {
+            SafeToStopSetsSupport.checkOptions(new OptionsStrategy("baz", "bar"), options);
+
+            fail("An undeclared option must be an operator error");
+        }
+        catch (IllegalArgumentException expected) {
+            String msg = expected.getMessage();
+
+            assertTrue(msg, msg.contains("Option(s) [foo] are not supported by strategy \"with-options\""));
+            assertTrue(msg, msg.contains("supported: [bar, baz]"));
+        }
+    }
+
+    /**
+     * A strategy that declares no option rejects any option of the run: the message shows the empty set
+     * instead of omitting the supported list.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testCheckOptionsOfStrategyWithoutOptions() throws Exception {
+        try {
+            SafeToStopSetsSupport.checkOptions(new TestOwnersSafeToStopSetsStrategy(), options("bar", ""));
+
+            fail("A strategy without options must reject the given options");
+        }
+        catch (IllegalArgumentException expected) {
+            String msg = expected.getMessage();
+
+            assertTrue(msg, msg.contains("supported: []"));
+            assertTrue(msg, msg.contains("test-owners"));
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Strategy exclusions
     // ---------------------------------------------------------------------
 
@@ -786,6 +995,34 @@ public class SafeToStopSetsSupportSelfTest {
         }
         catch (UnsupportedOperationException ignored) {
             // Expected.
+        }
+    }
+
+    /** Strategy that declares a fixed set of options and never splits: the options are checked before it. */
+    private static class OptionsStrategy implements SafeToStopSetsStrategy {
+        /** Declared option names. */
+        private final Set<String> supported;
+
+        /**
+         * @param supported Declared option names.
+         */
+        OptionsStrategy(String... supported) {
+            this.supported = new LinkedHashSet<>(Arrays.asList(supported));
+        }
+
+        /** {@inheritDoc} */
+        @Override public String name() {
+            return "with-options";
+        }
+
+        /** {@inheritDoc} */
+        @Override public Set<String> supportedOptions() {
+            return supported;
+        }
+
+        /** {@inheritDoc} */
+        @Override public List<List<UUID>> split(SafeToStopSetsContext ctx) {
+            throw new AssertionError("The options must be checked before the split");
         }
     }
 

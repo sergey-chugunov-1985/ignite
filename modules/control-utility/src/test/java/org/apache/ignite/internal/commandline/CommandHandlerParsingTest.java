@@ -503,6 +503,13 @@ public class CommandHandlerParsingTest {
         assertEquals(SafeToStopSetsCommand.class, args.command().getClass());
         assertTrue(((SafeToStopSetsCommandArg)args.commandArg()).noBackup());
 
+        // The comma-separated list is split by the parser: the argument carries the raw tokens, the syntax
+        // and the names are checked on the server node.
+        args = parseArgs(asList(SAFE_TO_STOP_SETS, "--strategy-options", "a=1,b"));
+
+        assertEquals(SafeToStopSetsCommand.class, args.command().getClass());
+        assertArrayEquals(new String[] {"a=1", "b"}, ((SafeToStopSetsCommandArg)args.commandArg()).strategyOptions());
+
         assertParseArgsThrows("Please specify a value for argument: --strategy", SAFE_TO_STOP_SETS, "--strategy");
 
         // A flag takes no value, so the value is a stray token rather than a mode of the exclusion.

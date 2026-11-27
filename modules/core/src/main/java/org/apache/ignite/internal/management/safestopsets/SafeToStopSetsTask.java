@@ -19,8 +19,8 @@ package org.apache.ignite.internal.management.safestopsets;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.ignite.IgniteException;
@@ -41,10 +41,11 @@ import static org.apache.ignite.plugin.security.SecurityPermissionSetBuilder.NO_
  * <p>
  * The job is mapped to a single node — the coordinator, selected by the command: it is the first to observe
  * topology changes, so a repeated topology version check on that node is sufficient for the answer to be
- * valid. The pipeline of a job: the strategy is resolved by name and first declares the cache groups its answer
- * does not cover, a read-only cluster snapshot is taken without those groups, the groups are computed and the
- * result is always verified against the snapshot by {@link SafeToStopSetsSupport}. A failed verification or a
- * snapshot that is not usable fails the job: no partial answer is ever transferred to the client.
+ * valid. The pipeline of a job: the options of the command line are parsed and checked against the strategy,
+ * the strategy declares the cache groups its answer does not cover, a read-only cluster snapshot is taken
+ * without those groups, the groups are computed and the result is always verified against the snapshot by
+ * {@link SafeToStopSetsSupport}. A failed verification or a snapshot that is not usable fails the job: no
+ * partial answer is ever transferred to the client.
  */
 @GridInternal
 public class SafeToStopSetsTask
@@ -121,10 +122,15 @@ public class SafeToStopSetsTask
 
         /** {@inheritDoc} */
         @Override protected SafeToStopSetsTaskResult run(SafeToStopSetsCommandArg arg) {
+            // The syntax of the options and their names are operator errors of the command line: both are
+            // reported before the cluster is read, whatever the state of the cluster is.
+            Map<String, String> opts = SafeToStopSetsSupport.parseStrategyOptions(arg.strategyOptions());
+
             SafeToStopSetsStrategy strategy = SafeToStopSetsStrategies.resolve(arg.strategy());
 
-            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(
-                ignite, arg.noBackup(), Collections.emptyMap(), strategy);
+            SafeToStopSetsSupport.checkOptions(strategy, opts);
+
+            SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(ignite, arg.noBackup(), opts, strategy);
 
             if (!ctx.partitionOwnersAvailable())
                 throw notReady(ctx);

@@ -316,11 +316,12 @@ If the file name isn't specified the output file name is: '<typeId>.bin':
       GRACEFUL         - Node will stop if and only if it does not store any unique partitions, that don't have another copies in the cluster.
 
   Print groups of server nodes that can be stopped simultaneously without data loss:
-    control.(sh|bat) --safe-to-stop-sets [--strategy backups-count] [--no-backup]
+    control.(sh|bat) --safe-to-stop-sets [--strategy backups-count] [--no-backup] [--strategy-options option1,option2=value]
 
     Parameters:
-      --strategy backups-count  - Name of the strategy that computes safe-to-stop sets. 'backups-count' is used by default.
-      --no-backup               - Exclude the cache groups without backups from the computation and report them with the reason.
+      --strategy backups-count                  - Name of the strategy that computes safe-to-stop sets. 'backups-count' is used by default.
+      --no-backup                               - Exclude the cache groups without backups from the computation and report them with the reason.
+      --strategy-options option1,option2=value  - Comma separated options of the strategy, each one 'name' or 'name=value'.
 
   Stop warm-up:
     control.(sh|bat) --warm-up --stop

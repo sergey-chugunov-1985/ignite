@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -401,6 +402,32 @@ public class SafeToStopSetsContextSelfTest extends GridCommonAbstractTest {
         assertEquals(Collections.singleton(REPL_CACHE_NAME), ctx.cacheGroups().keySet());
         assertTrue("A replicated group must not be excluded: " + ctx.excludedCacheGroups(),
             ctx.excludedCacheGroups().isEmpty());
+    }
+
+    /**
+     * The options of the run are carried to the snapshot untouched, in the name order: the core does not
+     * interpret them, it only passes them to the strategies through the context. A snapshot taken without
+     * options has an empty map, not {@code null}.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testStrategyOptionsAreCarriedToTheContext() throws Exception {
+        startGridsMultiThreaded(2);
+
+        awaitPartitionMapExchange();
+
+        Map<String, String> opts = new LinkedHashMap<>();
+
+        opts.put("baz", "");
+        opts.put("bar", "1");
+
+        SafeToStopSetsContextImpl ctx = new SafeToStopSetsContextImpl(grid(0), false, opts, null);
+
+        assertEquals("The options of the run are carried as they are", opts, ctx.strategyOptions());
+
+        assertTrue("A snapshot taken without options has an empty map",
+            new SafeToStopSetsContextImpl(grid(0)).strategyOptions().isEmpty());
     }
 
     /**

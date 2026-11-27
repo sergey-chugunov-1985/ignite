@@ -20,7 +20,9 @@ package org.apache.ignite.internal.management.safestopsets;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.cluster.ClusterNode;
@@ -57,6 +59,8 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
 
     /** {@inheritDoc} */
     @Override protected void afterTest() throws Exception {
+        TestOptionsSafeToStopSetsStrategy.reset();
+
         stopAllGrids();
 
         super.afterTest();
@@ -267,6 +271,100 @@ public class SafeToStopSetsTaskSelfTest extends GridCommonAbstractTest {
             assertTrue(msg, msg.contains(NO_BACKUP_CACHE_NAME));
             assertTrue(msg, msg.contains("without --no-backup"));
         }
+    }
+
+    /**
+     * A broken option of the command line is an operator error found before the snapshot is taken: the job
+     * fails with the usage-level marker instead of reading the cluster, so the answer does not depend on the
+     * state of the cluster.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testStrategyOptionsSyntaxIsCheckedFirst() throws Exception {
+        startGridsMultiThreaded(2);
+
+        SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
+
+        arg.strategyOptions(new String[] {"=1"});
+
+        try {
+            executeTask(arg);
+
+            fail("A malformed option must be an operator error");
+        }
+        catch (Exception e) {
+            assertTrue("Expected IAE in cause chain: " + e, X.hasCause(e, IllegalArgumentException.class));
+
+            String msg = X.cause(e, IllegalArgumentException.class).getMessage();
+
+            assertTrue(msg, msg.contains("has no name"));
+            assertTrue(msg, msg.contains("'name' or 'name=value'"));
+        }
+    }
+
+    /**
+     * An option the strategy does not declare is rejected before the snapshot is taken either, and the message
+     * lists the name of the strategy and the options it does declare.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testUnknownStrategyOptionIsRejected() throws Exception {
+        startGridsMultiThreaded(2);
+
+        SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
+
+        arg.strategyOptions(new String[] {"foo"});
+
+        try {
+            executeTask(arg);
+
+            fail("An undeclared option must be an operator error");
+        }
+        catch (Exception e) {
+            assertTrue("Expected IAE in cause chain: " + e, X.hasCause(e, IllegalArgumentException.class));
+
+            String msg = X.cause(e, IllegalArgumentException.class).getMessage();
+
+            assertTrue(msg, msg.contains("Option(s) [foo] are not supported by strategy"));
+            assertTrue(msg, msg.contains(BackupsCountSafeToStopSetsStrategy.NAME));
+            assertTrue(msg, msg.contains("supported: []"));
+        }
+    }
+
+    /**
+     * The declared options of this run reach the strategy unchanged: the core checks the syntax and the names,
+     * and carries the values to {@link SafeToStopSetsContext#strategyOptions()} without interpreting them.
+     *
+     * @throws Exception If failed.
+     */
+    @Test
+    public void testStrategyOptionsReachTheStrategy() throws Exception {
+        startGridsMultiThreaded(3);
+
+        createCache(2);
+
+        awaitPartitionMapExchange();
+
+        TestOptionsSafeToStopSetsStrategy.reset();
+
+        SafeToStopSetsCommandArg arg = new SafeToStopSetsCommandArg();
+
+        arg.strategy(TestOptionsSafeToStopSetsStrategy.NAME);
+        arg.strategyOptions(new String[] {"baz", "bar=1"});
+
+        SafeToStopSetsTaskResult res = executeTask(arg);
+
+        assertNotNull(res);
+
+        Map<String, String> expected = new LinkedHashMap<>();
+
+        expected.put("bar", "1");
+        expected.put("baz", "");
+
+        assertEquals("The strategy must receive the options of the run, ordered by name",
+            expected, TestOptionsSafeToStopSetsStrategy.seenOptions());
     }
 
     /**

@@ -25,10 +25,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cluster.ClusterNode;
 import org.apache.ignite.lang.IgniteExperimental;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * The common building blocks of the safe-to-stop-sets calculation: the exclusions declared by a strategy, the
@@ -41,9 +45,102 @@ import org.apache.ignite.lang.IgniteExperimental;
  */
 @IgniteExperimental
 public final class SafeToStopSetsSupport {
+    /** Characters of an option name: letters, digits, {@code '.'}, {@code '_'} and {@code '-'}. */
+    private static final Pattern OPTION_NAME = Pattern.compile("[A-Za-z0-9._-]+");
+
     /** */
     private SafeToStopSetsSupport() {
         // No instances.
+    }
+
+    /**
+     * Parses the raw {@code --strategy-options} tokens into the mapping carried to the strategy.
+     * <p>
+     * A token is either a name, which means the option is present with an empty value, or a
+     * {@code name=value} pair; the first {@code '='} divides the two, so a value may contain {@code '='}. The
+     * name and the value are trimmed, the case of the name is kept as given. The core never interprets the
+     * values: they are checked for syntax only and passed to the strategy as they are.
+     * <p>
+     * Every broken token is an operator error of the command line: an empty token, a missing or malformed name
+     * and a repeated name all fail with an {@link IllegalArgumentException}, which the command reports with
+     * exit code 1 before the cluster is read. The failure names the first offending token, so the operator
+     * fixes one typo at a time.
+     *
+     * @param options Raw tokens of {@code --strategy-options}, {@code null} or empty when the option was not
+     *      given.
+     * @return Name to value of the options, ordered by name; empty when no option was given.
+     * @throws IllegalArgumentException If a token is empty, has no name, has a malformed name or repeats a name
+     *      given earlier.
+     */
+    public static Map<String, String> parseStrategyOptions(@Nullable String[] options) {
+        if (options == null || options.length == 0)
+            return Collections.emptyMap();
+
+        String raw = String.join(",", options);
+
+        Map<String, String> res = new TreeMap<>();
+
+        for (String opt : options) {
+            String token = opt == null ? "" : opt.trim();
+
+            if (token.isEmpty()) {
+                throw new IllegalArgumentException("Empty strategy option in '--strategy-options " + raw
+                    + "': drop the empty element or the extra comma");
+            }
+
+            int eq = token.indexOf('=');
+
+            String name = (eq < 0 ? token : token.substring(0, eq)).trim();
+            String val = eq < 0 ? "" : token.substring(eq + 1).trim();
+
+            if (name.isEmpty()) {
+                throw new IllegalArgumentException("Strategy option has no name in '--strategy-options " + raw
+                    + "': the option is 'name' or 'name=value'");
+            }
+
+            if (!OPTION_NAME.matcher(name).matches()) {
+                throw new IllegalArgumentException("Invalid strategy option name [name='" + name
+                    + "']: only letters, digits, '.', '_' and '-' are allowed");
+            }
+
+            if (res.containsKey(name)) {
+                throw new IllegalArgumentException("Duplicate strategy option [name='" + name
+                    + "']: every option must be given once");
+            }
+
+            res.put(name, val);
+        }
+
+        return Collections.unmodifiableMap(res);
+    }
+
+    /**
+     * Checks that the strategy understands every option of this run. The values are not looked at: the core
+     * does not interpret them, so only the names are compared with
+     * {@link SafeToStopSetsStrategy#supportedOptions()}.
+     * <p>
+     * The check runs before the snapshot is taken, so an unsupported option fails with exit code 1 without any
+     * cluster read, whatever the state of the cluster is.
+     *
+     * @param strategy Strategy resolved for this run.
+     * @param options Options parsed from the command line.
+     * @throws IllegalArgumentException If the strategy declares no option with that name; the message lists
+     *      the given and the supported names, both ordered by name.
+     */
+    public static void checkOptions(SafeToStopSetsStrategy strategy, Map<String, String> options) {
+        if (options.isEmpty())
+            return;
+
+        Set<String> supported = strategy.supportedOptions();
+
+        Set<String> unknown = new TreeSet<>(options.keySet());
+
+        unknown.removeAll(supported);
+
+        if (!unknown.isEmpty()) {
+            throw new IllegalArgumentException("Option(s) " + unknown + " are not supported by strategy \""
+                + strategy.name() + "\", supported: " + new TreeSet<>(supported));
+        }
     }
 
     /**
